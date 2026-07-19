@@ -14,7 +14,6 @@ G-AI Desktop is a lightweight, modern, and feature-rich Electron-based desktop c
     *   `CmdOrCtrl + = / - / 0`: Flexibly zoom in, zoom out, or reset the interface scaling.
     *   `CmdOrCtrl + Shift + M`: Easily show or hide the application title bar/menu bar.
     *   **System Tray Companion**: Stays running in the background with customizable "Minimize to Tray on Close" behavior to avoid accidental loss of workspace.
-*   **🔍 Elegant Acrylic/Blur Transitions**: Captures a snapshot of the current view and applies a soft frosted-glass blur effect whenever dropdown menus are activated, creating a premium and distraction-free visual aesthetic.
 
 ---
 
@@ -47,6 +46,17 @@ npm start
 ```bash
 npm run build
 ```
+
+### Preview
+![G-AI Desktop light.png](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/light.jpg)
+
+![G-AI Desktop dark.png](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/dark.jpg)
+
+![G-AI Desktop file.png](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/file.jpg)
+
+![G-AI Desktop view.png](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/view.jpg)
+
+![G-AI Desktop settings.png](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/settings.jpg)
 
 ## ❤️ Acknowledgements & Disclaimer
 
