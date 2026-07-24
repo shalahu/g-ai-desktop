@@ -47,6 +47,7 @@ let currentTheme = 'dark';
 let lastClickTime = 0;
 let currentZoomFactor = DEFAULT_ZOOM_FACTOR;
 let addTabItems = [];
+let searchWin = null;
 
 function getDefaultAISupplier() {
     const currentDefaultId = getConfig('defaultAISupplier') ?? constants.AI_SUPPLIERS.G_GEMINI.id;
@@ -79,6 +80,7 @@ function toggleApplicationTheme(theme, fromWeb = false) {
     }
 
     titleBarView?.webContents.send('theme-changed', currentTheme);
+    searchWin?.webContents.send('theme-changed', currentTheme);
     for (const [id, tabView] of tabsMap.entries()) {
         tabView.webContents.send('theme-changed', currentTheme);
 
@@ -301,10 +303,6 @@ function createMainWindow() {
 
     mainWindow.on('resize', resizeViews);
 
-    // setTimeout(() => {
-    //     resizeViews();
-    // }, 50);
-
     mainWindow.on('close', async (e) => {
         e.preventDefault();
 
@@ -367,6 +365,10 @@ function createMainWindow() {
         getActiveTabView()?.webContents.reload();
     });
 
+    globalShortcut.register('CmdOrCtrl+F', () => {
+        createSearchWindow(getActiveTabView());
+    });
+
     if (!IS_LINUX) {
         mainWindow.on('enter-full-screen', () => {
             autoHideMenuBar();
@@ -376,10 +378,6 @@ function createMainWindow() {
             autoHideMenuBar();
         });
     }
-
-    // setTimeout(() => { toggleApplicationTheme(getConfig('theme') ?? 'system'); }, 250);
-
-    // toggleApplicationTheme(getConfig('theme') ?? 'system');
 
     autoHideMenuBar();
 
@@ -1215,6 +1213,15 @@ function createNewTabInstance(id, url, sendMsg = false) {
     //     updateMenus();
     // }
 
+    tabView.webContents.on('found-in-page', (event, result) => {
+        if (searchWin && result.activeMatchOrdinal !== undefined) {
+            searchWin.webContents.send('search-result-data', {
+                active: result.activeMatchOrdinal,
+                total: result.matches
+            });
+        }
+    });
+
     toggleApplicationTheme(getConfig('theme') ?? 'system');
 }
 
@@ -1318,6 +1325,10 @@ function restoreTabViewSize(activeTabView, bounds = null) {
             width: bounds.width - (SIDE_PADDING * 2),
             height: bounds.height - appHeaderHeight - SIDE_PADDING
         });
+
+        setTimeout(() => {
+            activeTabView.webContents.focus();
+        }, 150);
     }
 }
 
@@ -1577,6 +1588,41 @@ async function exportHTMLContent(sender, htmlContent, type) {
         }
 
     } catch (err) { }
+}
+
+function createSearchWindow(tabView) {
+    if (searchWin) {
+        searchWin.focus();
+        return;
+    }
+
+    const winBounds = mainWindow.getContentBounds();
+
+    searchWin = new BrowserWindow({
+        width: 320,
+        height: 40,
+        x: winBounds.x + winBounds.width - 320,
+        y: winBounds.y + appHeaderHeight,
+        parent: mainWindow,
+        frame: false,
+        resizable: false,
+        transparent: true,
+        alwaysOnTop: true,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload-ui.js')
+        }
+    });
+
+    searchWin.loadFile('search.html');
+
+    searchWin.on('closed', () => {
+        searchWin = null;
+        if (tabView) tabView.webContents.stopFindInPage('clearSelection');
+    });
+
+    searchWin.webContents.on('dom-ready', () => {
+        searchWin.webContents.send('theme-changed', currentTheme);
+    });
 }
 
 ipcMain.handle('upload-files', async (event, acceptString) => {
@@ -1839,6 +1885,7 @@ ipcMain.handle('switch-tab', (event, { id }) => {
         } else {
             tabView.isVisible = false;
             tabView.setBounds({ x: 10000, y: 10000, width: 1, height: 1 });
+            tabView.webContents.stopFindInPage('clearSelection');
         }
     }
 });
@@ -1937,4 +1984,24 @@ ipcMain.handle('export-html-content', async (event, { htmlContent, type }) => {
 
 ipcMain.handle('menus-updated', () => {
     resizeViews();
+});
+
+ipcMain.handle('start-search', (event, text) => {
+    const view = getActiveTabView();
+    if (view) view.webContents.findInPage(text, { findNext: false });
+});
+
+ipcMain.handle('navigate-search', (event, text, forward) => {
+    const view = getActiveTabView();
+    if (view) view.webContents.findInPage(text, { findNext: true, forward: forward });
+});
+
+ipcMain.handle('stop-search', () => {
+    for (const [tabId, tabView] of tabsMap.entries()) {
+        tabView.webContents.stopFindInPage('clearSelection');
+    }
+});
+
+ipcMain.handle('close-search-window', () => {
+    if (searchWin) searchWin.close();
 });

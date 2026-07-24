@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   maxWindow: () => ipcRenderer.invoke('max-window'),
   closeWindow: () => ipcRenderer.invoke('close-window'),
   menusUpdated: () => ipcRenderer.invoke('menus-updated'),
+  stopSearch: () => ipcRenderer.invoke('stop-search'),
+  closeSearchWindow: () => ipcRenderer.invoke('close-search-window'),
 
   // toggleThemeFromUI: (data) => ipcRenderer.invoke('toggle-theme-from-ui', data),
   createTab: (data) => ipcRenderer.invoke('create-tab', data),
@@ -20,6 +22,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getConfig: (data) => ipcRenderer.invoke('get-config', data),
   clickMenuItem: (data) => ipcRenderer.invoke('click-menu-item', data),
   exportHtmlContent: (data) => ipcRenderer.invoke('export-html-content', data),
+  startSearch: (data) => ipcRenderer.invoke('start-search', data),
+  navigateSearch: (data) => ipcRenderer.invoke('navigate-search', data),
 
   onNewTabCreated: (callback) => ipcRenderer.on('new-tab-created', (e, data) => callback(data)),
   onTitleChanged: (callback) => ipcRenderer.on('title-changed', (e, data) => callback(data)),
@@ -27,4 +31,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onThemeChanged: (callback) => ipcRenderer.on('theme-changed', (e, data) => callback(data)),
   onSetTabBarBackground: (callback) => ipcRenderer.on('set-tab-bar-background', (e, data) => callback(data)),
   onUpdateMenus: (callback) => ipcRenderer.on('update-menus', (e, data) => callback(data)),
+  onSearchResultData: (callback) => ipcRenderer.on('search-result-data', (e, data) => callback(data)),
 });
