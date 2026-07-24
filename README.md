@@ -6,8 +6,12 @@ G-AI Desktop is a lightweight, modern, and feature-rich Electron-based desktop c
 
 ## ✨ Features
 
-*   **🔍 Full Google Search (AI Mode) Support**: Built-in support for **Google Search (AI Mode)** alongside **Google Gemini**. Easily set it as your default landing page or switch between suppliers.  
-
+*   **💡 Full Google Search (AI Mode) Support**: Built-in support for **Google Search (AI Mode)** alongside **Google Gemini**. Easily set it as your default landing page or switch between suppliers.  
+*   **🔎 Native Web Page Search (Feature Highlight)**:
+    *   **In-Page Text Find**: An all-new, elegant search bar to find text within any active web page, just like a native browser.
+    *   **Real-time Matching**: Highlights matches instantly and provides a navigation counter (e.g., "1/5").
+    *   **Suppliers Agnostic**: Works perfectly across both Google Gemini and Google Search (AI Mode) interfaces.
+    *   **Shortcut integration**: Seamlessly integrated with the CmdOrCtrl + F shortcut and Esc key.
 *   **📎 Smart Multi-File Upload & Auto-PDF Merger (Feature Highlight)**:
     *   **Expanded File Type Support**: Support uploading Word documents (.doc, .docx), Excel/CSV sheets (.csv), raw plain text, code files (Python, JS, C++, TS, Markdown, etc.), images (PNG, JPG, WebP, GIF, HEIC, etc.), and native PDFs directly within **Google Search (AI Mode)**.
     *   **One-Click Auto-Merger**: Select multiple files of varying formats at once—the app automatically parses, formats, and merges them into a single, clean PDF file on the fly before sending it to **Google Search (AI Mode)**.  
@@ -18,9 +22,12 @@ G-AI Desktop is a lightweight, modern, and feature-rich Electron-based desktop c
 *   **🎨 Dynamic Theme Synchronization**: Full out-of-the-box support for Dark and Light modes, including automatic system theme detection. It achieves flawless, bi-directional theme synchronization between the desktop shell UI and the Gemini web interface.
 *   **💾 High-Fidelity Chat Export**: While in an active chat session, export the entire conversation into **HTML**, **PDF**, or **Word (Doc)** formats with a single click. It automatically converts and embeds remote images into Base64 format for reliable offline viewing.
 *   **⌨️ Native Shortcuts & Tray Integration**:
+    *   `CmdOrCtrl + F`: Globally toggle the In-Page Text Find search bar.
     *   `CmdOrCtrl + Shift + Space`: Globally toggle (Show/Hide) the application window.
     *   `CmdOrCtrl + = / - / 0`: Flexibly zoom in, zoom out, or reset the interface scaling.
     *   `CmdOrCtrl + Shift + M`: Easily show or hide the application title bar/menu bar.
+    *   `F11`: Toggle fullscreen mode.
+    *   `Esc`: Close the active search bar.
     *   **System Tray Companion**: Stays running in the background with customizable "Minimize to Tray on Close" behavior to avoid accidental loss of workspace.
 
 ---
@@ -56,6 +63,12 @@ npm run build
 ```
 
 ### Preview
+![G-AI Desktop search.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/search.jpg)
+
+![G-AI Desktop export-g-ai.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/export-g-ai.jpg)
+
+![G-AI Desktop multiple-files.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/multiple-files.jpg)
+
 ![G-AI Desktop light.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/light.jpg)
 
 ![G-AI Desktop dark.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/dark.jpg)
@@ -65,10 +78,6 @@ npm run build
 ![G-AI Desktop view.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/view.jpg)
 
 ![G-AI Desktop settings.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/settings.jpg)
-
-![G-AI Desktop multiple-files.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/multiple-files.jpg)
-
-![G-AI Desktop export-g-ai.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/export-g-ai.jpg)
 
 ## ❤️ Acknowledgements & Disclaimer
 
