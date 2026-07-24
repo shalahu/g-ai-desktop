@@ -2,7 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getCurrentTheme: () => ipcRenderer.invoke('get-current-theme'),
-  getConstants: () => ipcRenderer.invoke('get-constants'),
+  // getConstants: () => ipcRenderer.invoke('get-constants'),
+  getDefaultAISupplier: () => ipcRenderer.invoke('get-default-ai-supplier'),
   mouseEnterMenu: () => ipcRenderer.invoke('mouse-enter-menu'),
   mouseLeaveMenu: () => ipcRenderer.invoke('mouse-leave-menu'),
   minWindow: () => ipcRenderer.invoke('min-window'),

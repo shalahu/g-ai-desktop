@@ -1,17 +1,17 @@
-const { app, BaseWindow, WebContentsView, ipcMain, nativeTheme, Tray, Menu, globalShortcut, nativeImage, BrowserWindow, dialog, net } = require('electron');
+const { app, BaseWindow, WebContentsView, ipcMain, nativeTheme, Tray, Menu, globalShortcut, nativeImage, BrowserWindow, dialog, net, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const type = require('os');
+const { PDFDocument } = require('pdf-lib');
+const mammoth = require('mammoth');
+const csvtojson = require('csvtojson');
+const console = require('console');
 
-const constants = require('./constants.js');
-
+const APP_NAME = "G-AI Desktop";
 const SIDE_PADDING = 0;
-const tabsMap = new Map();
-const isMac = process.platform === 'darwin';
-const isWin = process.platform === 'win32';
-const isLinux = process.platform === 'linux';
-const menuItemsRegistry = new Map();
-const configPath = path.join(app.getPath('userData'), 'user-config.json');
+const IS_MAC = process.platform === 'darwin';
+const IS_WINDOWS = process.platform === 'win32';
+const IS_LINUX = process.platform === 'linux';
 const DEFAULT_APP_HEADER_HEIGHT = 72;
 const DEFAULT_TITLE_BAR_HEIGHT = 32;
 const DEFAULT_MAIN_WINDOW_FRAME = getConfig('mainWindowFrame') ?? false;
@@ -19,6 +19,23 @@ const DEFAULT_ZOOM_FACTOR = 1;
 const MIN_ZOOM_FACTOR = 0.5;
 const MAX_ZOOM_FACTOR = 2;
 const APP_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) G-AIDesktop/0.10.0 Chrome/150.0.0.0 Electron/31.7.7 Safari/537.36";
+const WORD_DOC_EXTS = ['doc', 'docx'];
+const EXCEL_DATA_SHEET_EXTS = ['csv']
+const PLAIN_TEXT_EXTS = ['html', 'htm', 'txt', 'md', 'rtf', 'java', 'py', 'cpp', 'js', 'css', 'cs', 'json', 'ts', 'tsx', 'jsx', 'go', 'rs', 'sh', 'bat', 'yaml', 'yml', 'xml', 'ini', 'toml', 'sql', 'kt', 'swift', 'php', 'tsv', 'log', 'vcf', 'ps1'];
+const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif', 'heic', 'heif'];
+const CONVERTIBLE_TO_PDF_EXTS = [...WORD_DOC_EXTS, ...EXCEL_DATA_SHEET_EXTS, ...PLAIN_TEXT_EXTS, ...IMAGE_EXTS];
+
+const tabsMap = new Map();
+const menuItemsRegistry = new Map();
+const configPath = path.join(app.getPath('userData'), 'user-config.json');
+const constants = Object.freeze({
+    AI_SUPPLIERS: Object.freeze({
+        G_GEMINI: { id: 'google_gemini', landingPage: 'https://gemini.google.com/app', title: 'Google Gemini', label: 'Google Gemini' },
+        G_SEACH_AI_MODE: {
+            id: 'google_search_ai_node', landingPage: 'https://www.google.com/search?udm=50', title: 'Google Search', label: 'Google Search (AI Mode)'
+        },
+    }),
+});
 
 let appHeaderHeight = DEFAULT_APP_HEADER_HEIGHT;
 let baseAppHeaderHeight = DEFAULT_APP_HEADER_HEIGHT;
@@ -28,9 +45,28 @@ let titleBarView;
 let tray = null;
 let currentTheme = 'dark';
 let lastClickTime = 0;
-let appTitle = constants.APP_NAME;
 let currentZoomFactor = DEFAULT_ZOOM_FACTOR;
-let isRealChatURL = false;
+let addTabItems = [];
+
+function getDefaultAISupplier() {
+    const currentDefaultId = getConfig('defaultAISupplier') ?? constants.AI_SUPPLIERS.G_GEMINI.id;
+    const entries = Object.entries(constants.AI_SUPPLIERS);
+    const match = entries.find(([key, value]) => value.id === currentDefaultId);
+
+    if (!match) return constants.AI_SUPPLIERS.G_GEMINI;
+
+    const [key, value] = match;
+    return { key, ...value };
+}
+
+function isDefaltAISupplier(id) {
+    const currentDefaultId = getConfig('defaultAISupplier') ?? constants.AI_SUPPLIERS.G_GEMINI.id;
+    return id === currentDefaultId;
+}
+
+function isDefaultAISupplierSet() {
+    return getConfig('defaultAISupplier') !== '';
+}
 
 function toggleApplicationTheme(theme, fromWeb = false) {
     currentTheme = theme === 'system' ? (nativeTheme.shouldUseDarkColors ? 'dark' : 'light') : theme;
@@ -65,6 +101,7 @@ function toggleApplicationTheme(theme, fromWeb = false) {
     }
 
     saveConfig('theme', theme);
+
     updateMenus();
 }
 
@@ -177,11 +214,13 @@ function handleTrayClick() {
     updateMenus(true);
 }
 
-function updateMenus(updateTrayMenus = false) {
+function updateMenus(updateTrayMenus = false, updateAppMenus = true) {
     if (updateTrayMenus) {
         tray.setContextMenu(createContextMenu(true));
     }
-    Menu.setApplicationMenu(createContextMenu(false));
+    if (updateAppMenus) {
+        Menu.setApplicationMenu(createContextMenu(false));
+    }
     updateMenuBar();
 }
 
@@ -200,8 +239,8 @@ function showApp() {
     getActiveTabView()?.webContents.focus();
 }
 
-function showAppAndAddNewTab() {
-    createNewTabBackend(constants.LANDING_URL);
+function showAppAndAddNewTab(url) {
+    createNewTabBackend(url ?? getDefaultAISupplier().landingPage);
 
     showApp();
 }
@@ -209,6 +248,17 @@ function showAppAndAddNewTab() {
 function createNewTabBackend(url) {
     const tabId = 'tab_' + Date.now();
     createNewTabInstance(tabId, url, true);
+}
+
+function getCallerName() {
+    const obj = {};
+    Error.captureStackTrace(obj, getCallerName);
+
+    const stack = obj.stack.split('\n');
+    if (stack.length > 2) {
+        return stack[2];
+    }
+    return 'unknown';
 }
 
 function resizeViews() {
@@ -224,12 +274,12 @@ function resizeViews() {
 function createMainWindow() {
     Menu.setApplicationMenu(createContextMenu(false));
 
-    const iconPath = path.join(__dirname, 'icon.png');
+    const iconPath = path.join(__dirname, 'assets/icon.png');
 
     mainWindow = new BaseWindow({
         width: 1200,
         height: 800,
-        title: appTitle,
+        title: APP_NAME,
         icon: iconPath,
         frame: DEFAULT_MAIN_WINDOW_FRAME,
         show: true,
@@ -251,9 +301,9 @@ function createMainWindow() {
 
     mainWindow.on('resize', resizeViews);
 
-    setTimeout(() => {
-        resizeViews();
-    }, 50);
+    // setTimeout(() => {
+    //     resizeViews();
+    // }, 50);
 
     mainWindow.on('close', async (e) => {
         e.preventDefault();
@@ -271,7 +321,7 @@ function createMainWindow() {
 
     tray = new Tray(iconPath);
 
-    tray.setToolTip(appTitle);
+    tray.setToolTip(APP_NAME);
     tray.setContextMenu(createContextMenu(true));
     tray.on('click',
         () => {
@@ -279,7 +329,16 @@ function createMainWindow() {
                 handleTrayClick();
             }
             else if (getConfig('iconDefaults') === 'openNewTab') {
-                showAppAndAddNewTab();
+                if (isDefaultAISupplierSet()) {
+                    showAppAndAddNewTab();
+                } else {
+                    const addTabMenu = Menu.buildFromTemplate(addTabItems);
+                    addTabMenu.on('menu-will-close', () => {
+                        updateMenus(true, false);
+                    });
+                    tray.setContextMenu(addTabMenu);
+                    tray.popUpContextMenu();
+                }
             }
         }
     );
@@ -308,7 +367,7 @@ function createMainWindow() {
         getActiveTabView()?.webContents.reload();
     });
 
-    if (!isLinux) {
+    if (!IS_LINUX) {
         mainWindow.on('enter-full-screen', () => {
             autoHideMenuBar();
         });
@@ -318,7 +377,9 @@ function createMainWindow() {
         });
     }
 
-    setTimeout(() => { toggleApplicationTheme(getConfig('theme') ?? 'system'); }, 250);
+    // setTimeout(() => { toggleApplicationTheme(getConfig('theme') ?? 'system'); }, 250);
+
+    // toggleApplicationTheme(getConfig('theme') ?? 'system');
 
     autoHideMenuBar();
 
@@ -336,7 +397,7 @@ function toggleFullscreen() {
 
     mainWindow.setFullScreen(!isFull);
 
-    if (isLinux) {
+    if (IS_LINUX) {
         resizeViews();
     }
 }
@@ -362,103 +423,273 @@ function zoomApp(factor) {
 }
 
 async function triggerExport(type) {
-    const jsCode = `
-        (function() {
-            try {
-                const iframePrototype = HTMLIFrameElement.prototype;
-                const nativeGetter = Object.getOwnPropertyDescriptor(iframePrototype, 'contentWindow').get;
-
-                Object.defineProperty(iframePrototype, 'contentWindow', {
-                    get: function() {
-                        let win = null;
-                        try {
-                            win = nativeGetter.call(this);
-                        } catch (e1) {
-                            try {
-                                win = this.contentDocument ? this.contentDocument.defaultView : null;
-                            } catch (e2) {
-                                const nativeDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'parentNode');
-                                if (nativeDesc) {
-                                    try {
-                                        win = nativeDesc.get.call(this);
-                                    } catch (e3) {}
-                                }
-                            }
-                        }
-
-                        if (win) {
-                            const iframeElement = this;
-                            win.print = function() {
-                                try {
-                                    let htmlContent = "";
-                                    try {
-                                        htmlContent = iframeElement.contentDocument.documentElement.innerHTML;
-                                    } catch (err) {
-                                        try {
-                                            htmlContent = win.document.documentElement.innerHTML;
-                                        } catch (err2) {
-                                            htmlContent = document.body.innerHTML;
-                                        }
-                                    }
-
-                                    window.dispatchEvent(new CustomEvent('export-html-content', {
-                                        detail: {
-                                            htmlContent: htmlContent,
-                                            type: '${type}'
-                                        }
-                                    }));
-                                } catch (innerError) {}
-                            };
-                        }
-
-                        return win;
-                    },
-                    configurable: true,
-                    enumerable: true
-                });
-                const observeMenu = () => {
-                        return new Promise((resolve) => {
-                            const observer = new MutationObserver((mutations, obs) => {
-                            const target = document.querySelector('conversation-actions-icon').querySelector('gem-menu-item[value="download-pdf"]');
-
-                            if (target && target.getBoundingClientRect().width > 0) {
-                                obs.disconnect();
-                                resolve(target);
-                            }
-                            });
-
-                            observer.observe(document.body, {
-                            childList: true,
-                            subtree: true,
-                            attributes: true
-                            });
-                        });
-                    };
-
-                (async () => {
-                    const menuPromise = observeMenu();
-
-                    setTimeout(() => {window.dispatchEvent(new CustomEvent('mouse-enter-menu'));}, 150);
-                    
-                    document.querySelector('conversation-actions-icon').querySelector('button').click();
-
-                    const menuItem = await menuPromise;
-
-                    menuItem.click();
-                    })();
-            } catch (e) {console.log(e);}
-        })();
-        `;
-
     const activeTabView = getActiveTabView();
-    const isRealChatWindow = await activeTabView.webContents.executeJavaScript(`
+
+    if (isGeminiRealChatURL(activeTabView)) {
+        const isGeminiRealChatReady = await activeTabView.webContents.executeJavaScript(`
                 !!(document.querySelector('.conversation-container') && document.querySelector('conversation-actions-icon') && document.querySelector('[trace="ChatContainer"]'))
                 `);
-    if (isRealChatURL && isRealChatWindow) {
-        activeTabView.webContents.executeJavaScript(jsCode);
+        if (isGeminiRealChatReady) {
+            const jsCode = `
+            (function() {
+                try {
+                    const iframePrototype = HTMLIFrameElement.prototype;
+                    const nativeGetter = Object.getOwnPropertyDescriptor(iframePrototype, 'contentWindow').get;
+
+                    Object.defineProperty(iframePrototype, 'contentWindow', {
+                        get: function() {
+                            let win = null;
+                            try {
+                                win = nativeGetter.call(this);
+                            } catch (e1) {
+                                try {
+                                    win = this.contentDocument ? this.contentDocument.defaultView : null;
+                                } catch (e2) {
+                                    const nativeDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'parentNode');
+                                    if (nativeDesc) {
+                                        try {
+                                            win = nativeDesc.get.call(this);
+                                        } catch (e3) {}
+                                    }
+                                }
+                            }
+
+                            if (win) {
+                                const iframeElement = this;
+                                win.print = function() {
+                                    try {
+                                        let htmlContent = "";
+                                        try {
+                                            htmlContent = iframeElement.contentDocument.documentElement.innerHTML;
+                                        } catch (err) {
+                                            try {
+                                                htmlContent = win.document.documentElement.innerHTML;
+                                            } catch (err2) {
+                                                htmlContent = document.body.innerHTML;
+                                            }
+                                        }
+
+                                        window.dispatchEvent(new CustomEvent('export-html-content', {
+                                            detail: {
+                                                htmlContent: htmlContent,
+                                                type: '${type}'
+                                            }
+                                        }));
+                                    } catch (innerError) {}
+                                };
+                            }
+
+                            return win;
+                        },
+                        configurable: true,
+                        enumerable: true
+                    });
+                    const observeMenu = () => {
+                            return new Promise((resolve) => {
+                                const observer = new MutationObserver((mutations, obs) => {
+                                const target = document.querySelector('conversation-actions-icon').querySelector('gem-menu-item[value="download-pdf"]');
+
+                                if (target && target.getBoundingClientRect().width > 0) {
+                                    obs.disconnect();
+                                    resolve(target);
+                                }
+                                });
+
+                                observer.observe(document.body, {
+                                childList: true,
+                                subtree: true,
+                                attributes: true
+                                });
+                            });
+                        };
+
+                    (async () => {
+                        const menuPromise = observeMenu();
+
+                        setTimeout(() => {window.dispatchEvent(new CustomEvent('mouse-enter-menu'));}, 150);
+                        
+                        document.querySelector('conversation-actions-icon').querySelector('button').click();
+
+                        const menuItem = await menuPromise;
+
+                        menuItem.click();
+                        })();
+                } catch (e) {}
+            })();
+            `;
+
+            activeTabView.webContents.executeJavaScript(jsCode);
+        }
+    } else if (isGoogleSearchAIModeRealChatURL(activeTabView)) {
+        const isGoogleSearchAIModeRealChatReady = await activeTabView.webContents.executeJavaScript(`
+                !!(document.querySelector('div[data-xid="aim-mars-turn-root"]') && document.querySelector('div[data-scope-id="turn"]') && document.querySelector('div[data-container-id="main-col"]'))
+                `);
+
+        if (isGoogleSearchAIModeRealChatReady) {
+            await blurActiveTabView(activeTabView);
+
+            const jsCode = `(function() { try { 
+            const turns = []; 
+            const rawHTMLString = document.body.innerHTML; 
+            const parser = new DOMParser(); 
+            const tempDoc = parser.parseFromString(rawHTMLString, 'text/html'); 
+            const turnItems = tempDoc.querySelector('div[data-xid="aim-mars-turn-root"]')?.querySelectorAll('div[data-scope-id="turn"]'); 
+            
+            (turnItems ?? []).forEach((turnItem) => { 
+                let promptEl = null; 
+                if (turnItem.innerHTML.includes('You said:')) { 
+                    const spans = turnItem.querySelectorAll('span:not([class])'); 
+                    promptEl = Array.from(spans ?? []).filter(el => el && el.innerText && el.innerText.trim() !== ''); 
+                } else { 
+                    const streamingContainer = turnItem.closest('div[data-streaming-container]'); 
+                    const spans = streamingContainer ? streamingContainer.querySelectorAll('span:not([class])') : []; 
+                    promptEl = Array.from(spans ?? []).filter(el => el && el.innerText && el.innerText.trim() !== ''); 
+                } 
+
+                const promptText = promptEl && promptEl[0] && promptEl[0].innerText ? promptEl[0].innerText.trim() : ""; 
+                
+                let ignored = []; 
+                const divs = turnItem.querySelector('div[data-container-id="main-col"]')?.querySelectorAll('ul,ol,table,span,div[data-sfc-root="ep"]:not([data-container-id]):not([data-animation-skip]):not([style*="display:none"]):not([style*="display: none"]):not(:has(table))'); 
+                
+                let responses = Array.from(divs ?? []).filter(el => { 
+                    if (ignored.includes(el)) { return false; } 
+                    const txt = el.innerText ? el.innerText.trim() : ""; 
+                    if (txt === '') return false; 
+
+                    if (!el.hasAttribute('data-sfc-root') || el.getAttribute('data-sfc-root') !== 'ep') {
+                        const isPartofAIBody = el.closest('div[data-sfc-root="ep"]') !== null;
+                        if (!isPartofAIBody) {
+                        return false;
+                        }
+                    }
+
+                    if (el.tagName === 'BUTTON' || el.tagName === 'SVG' || el.tagName === 'IMG' || el.tagName === 'FORM') {
+                        return false;
+                    }
+                    
+                    el.querySelectorAll('span').forEach(span => { 
+                        const innerButton = span.querySelector('button'); 
+                        if (innerButton) { 
+                            const buttonHasGraphics = innerButton.querySelector('img') !== null || innerButton.querySelector('svg') !== null; 
+                            if (buttonHasGraphics) { span.remove(); } 
+                        } 
+                    }); 
+                    
+                    if (!el.hasAttribute('data-sfc-root')) { 
+                        const outerButton = el.closest('button'); 
+                        const belongsToAnchor = el.closest('a') !== null; 
+                        const containsImage = el.querySelector('img') !== null || el.querySelector('svg') !== null || el.tagName === 'IMG'; 
+                        if (outerButton || (belongsToAnchor || containsImage)) { return false; } 
+                    } 
+                    
+                    let result = el.innerText.trim() !== '' && (el.tagName !== 'SPAN' || (el.tagName === 'SPAN' && el.querySelector('button') === null)); 
+                    if (result) { 
+                        const ig = el.querySelectorAll('span'); 
+                        ignored = [...ignored, ...Array.from(ig)]; 
+                    } 
+                    return result; 
+                }); 
+
+                for (let i = responses.length - 1; i >= 0; i--) { 
+                    const currentEl = responses[i]; 
+
+                    const hasClutterControls = currentEl.querySelector('button') || currentEl.querySelector('svg') || currentEl.querySelector('form') || currentEl.tagName === 'FORM';
+                    const hasSystemFeedbackAttributes = currentEl.querySelector('[aria-label*="feedback"]') || currentEl.querySelector('[aria-label*="share"]') || currentEl.querySelector('a[href*="privacy"]') || currentEl.querySelector('a[href*="terms"]') || currentEl.querySelector('a[href*="support"]');
+                    
+                    if (hasClutterControls || hasSystemFeedbackAttributes) { 
+                        responses.splice(i, 1);
+                    } 
+                }
+
+                function htmlEscape(codeString) {
+                    const div = document.createElement('div');
+                    div.textContent = codeString;
+                    return div.innerHTML;
+                }
+
+                const allowedTags = ['STRONG', 'CODE', 'UL', 'OL', 'LI', 'TABLE', 'TBODY', 'TH', 'TR', 'TD'];
+
+                function cleanNode(node) {
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        return node.nodeValue;
+                    }
+
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        let childContent = '';
+                        node.childNodes.forEach(child => {
+                        childContent += cleanNode(child);
+                        });
+
+                        const tagName = node.tagName;
+                        if (allowedTags.includes(tagName)) {
+                            const lowerTag = tagName.toLowerCase();
+
+                            if (lowerTag === 'code') {
+                                return '<div class="code-block-wrapper"><pre><' + lowerTag + '>' + htmlEscape(childContent) + '</' + lowerTag + '></pre></div>';
+                            } else {
+                                return '<' + lowerTag + '>' + childContent + '</' + lowerTag + '>';
+                            }
+                        } else if (tagName === 'DIV' && node.getAttribute('role') === 'heading') {
+                            const level = node.getAttribute('aria-level');
+
+                            if (level) {
+                                return '<h' + level + '>' + childContent + '</h' + level + '>';
+                            }
+                        }
+
+                        return childContent;
+                    }
+
+                    return '';
+                }
+                
+                let responseText = responses.map(res => {
+                        if (res.innerText) {
+                            const text = cleanNode(res);
+
+                            return text.replace(/Use code with caution./g, '');
+                        } else {
+                            return "";
+                        }
+                    }).filter(t => t !== "").join('\\n'); 
+                const responseHTML = responses.map(res => res.innerHTML ? res.innerHTML.trim() : "").filter(t => t !== "").join('\\n');
+  
+                if (promptText || responseText) { 
+                    turns.push({ prompt: promptText, responseText: responseText, responseHTML: responseHTML }); 
+                } 
+            }); 
+            
+            const chatData = { title: document.title || "AI CHAT LOG", url: document.location.href, dialogues: turns }; 
+            
+            return chatData;
+            } catch (e) {console.error(e);} })();`;
+
+            const chatData = await activeTabView.webContents.executeJavaScript(jsCode);
+
+            let dialoguesHtml = "";
+            chatData.dialogues.forEach((round, index) => {
+                dialoguesHtml += '<div class="chat-section prompt-section">' +
+                    '<div class="section-label">User Prompt #' + (index + 1) + '</div>' +
+                    '<div class="content">' + round.prompt + '</div>' +
+                    '</div>' +
+                    '<div class="chat-section response-section">' +
+                    '<div class="section-label">AI Response #' + (index + 1) + '</div>' +
+                    '<div class="content">' + round.responseText;
+                if (round.responseHTML) {
+                    // dialoguesHtml += '<div class="code-block-wrapper"><pre>' + round.responseHTML + '</pre></div>'; 
+                }
+                dialoguesHtml += '</div></div>';
+            });
+
+            const htmlContent = '<!DOCTYPE html><html lang="und"><head><meta charset="UTF-8"><title>' + chatData.title + '</title>' +
+                '<style>@page { size: A4; margin: 0; } body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; margin: 0; padding: 50px; color: #1e293b; background-color: #ffffff; line-height: 1.6; font-size: 15px;} .file-banner { font-size: 12px; font-weight: 600; color: #64748b; padding-bottom: 12px; margin-bottom: 35px; border-bottom: 1px solid #e2e8f0; letter-spacing: 1px; text-transform: uppercase;} pre { font-family: "Consolas", "Fira Code", "Courier New", monospace; font-size: 13px; line-height: 1.5; color: #0f172a; white-space: pre-wrap; word-break: break-all; margin: 0; } a .export-title { font-size: 24px; font-weight: 700; color: #0f172a; margin-bottom: 30px; } .chat-section { margin-bottom: 25px; border-radius: 8px; padding: 20px; } .prompt-section { background-color: #f8fafc; border-left: 4px solid #64748b; } .response-section { background-color: #ffffff; border-left: 4px solid #3b82f6; border: 1px solid #f1f5f9; } .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; } .prompt-section .section-label { color: #64748b; } .response-section .section-label { color: #3b82f6; } .content { color: #334155; font-size: 15px; white-space: pre-wrap; } .code-block-wrapper { margin: 8px; padding: 16px; display: inline-flex; align-items: center; vertical-align: middle; background-color: #f1f5f9; border-radius: 4px; border: 1px solid #e2e8f0; } .code-block-wrapper pre { display: inline; font-size: 0.9em; font-family: "Consolas", "Fira Code", "Courier New", monospace; color: #0f172a; white-space: pre; word-break: normal; margin: 0; white-space: pre-wrap; word-wrap: break-word; word-break: break-all; } table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; } th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; color: #334155; } th { background-color: #f8fafc; color: #0f172a; font-weight: 600; } tr:nth-child(even) { background-color: #fdfdfd; } </style></head>' +
+                '<body><div class="file-banner">AI CHAT LOG</div><a href="' + chatData.url + '"><h1 class="export-title">' + chatData.title + '</h1></a>' + dialoguesHtml + '</body></html>';
+
+            await exportHTMLContent(activeTabView.webContents, htmlContent, type);
+        }
     }
     else {
-        await dialog.showMessageBoxSync(mainWindow, {
+        await dialog.showMessageBox(mainWindow, {
             type: 'warning',
             title: 'Export Failed',
             message: 'No conversations found.',
@@ -470,14 +701,38 @@ async function triggerExport(type) {
 
 function createContextMenu(isTray) {
     const menuTemplate = [];
+    const entries = Object.entries(constants.AI_SUPPLIERS);
 
-    const newTabItme = {
-        id: 'm-newtab',
-        label: 'New Tab',
-        click: () => {
-            showAppAndAddNewTab();
-        }
-    };
+    let newTabItme = null;
+    addTabItems = [];
+
+    if (isDefaultAISupplierSet()) {
+        const defaultAISupplier = getDefaultAISupplier();
+        newTabItme = {
+            id: 'm-newtab',
+            label: 'New Tab - ' + defaultAISupplier.label,
+            click: () => {
+                showAppAndAddNewTab();
+            }
+        };
+    } else {
+        entries.map(([key, value]) => {
+            addTabItems.push({
+                id: 'm-newtab-' + value.id,
+                label: value.label,
+                click: () => {
+                    showAppAndAddNewTab(value.landingPage);
+                }
+            })
+        });
+
+
+        newTabItme = {
+            id: 'm-newtab',
+            label: 'New Tab',
+            submenu: addTabItems
+        };
+    }
 
     const exitItem = {
         id: "m-exit",
@@ -496,13 +751,11 @@ function createContextMenu(isTray) {
     else {
         const exportItems = {
             id: "export-menu",
-            label: isMac ? 'Export...' : 'Export',
-            enabled: isRealChatURL,
+            label: IS_MAC ? 'Export...' : 'Export',
             submenu: [
                 {
                     id: "m-exprot-html",
                     label: 'Html',
-                    enabled: isRealChatURL,
                     click: (menuItem) => {
                         triggerExport('html');
                     }
@@ -510,7 +763,6 @@ function createContextMenu(isTray) {
                 {
                     id: "m-exprot-pdf",
                     label: 'PDF',
-                    enabled: isRealChatURL,
                     click: (menuItem) => {
                         triggerExport('pdf');
                     }
@@ -518,7 +770,6 @@ function createContextMenu(isTray) {
                 {
                     id: "m-exprot-doc",
                     label: 'Doc',
-                    enabled: isRealChatURL,
                     click: (menuItem) => {
                         triggerExport('doc');
                     }
@@ -535,7 +786,7 @@ function createContextMenu(isTray) {
 
     const toggleWindowVisibilityItem = {
         id: 'toggle-window-visibility',
-        visible: !isLinux,
+        visible: !IS_LINUX,
         accelerator: 'CmdOrCtrl+Shift+Space',
         label: (isMainWidowVisible() ? 'Hide' : 'Show') + ' Window',
         click: () => {
@@ -626,7 +877,7 @@ function createContextMenu(isTray) {
                 {
                     id: "m-menubar",
                     label: (getConfig('autoHideTitleBar') ? 'Show' : 'Hide') + ' Title Bar',
-                    visible: !isLinux,
+                    visible: !IS_LINUX,
                     accelerator: 'CmdOrCtrl+Shift+M',
                     click: (menuItem) => {
                         toggleTitleBar();
@@ -636,14 +887,44 @@ function createContextMenu(isTray) {
         };
         menuTemplate.push(viewItem);
 
+        const landingPageItems = [{
+            id: "m-nta-let-me-choose",
+            label: 'Let Me Choose',
+            checked: !isDefaultAISupplierSet(),
+            click: (menuItem) => {
+                saveConfig('defaultAISupplier', '');
+                updateMenus(true);
+            }
+        },
+            separatorItem
+        ];
+        const entries = Object.entries(constants.AI_SUPPLIERS);
+        entries.forEach(([key, value]) => {
+            landingPageItems.push({
+                id: value.id,
+                label: value.label,
+                type: 'radio',
+                checked: isDefaltAISupplier(value.id),
+                click: (menuItem) => {
+                    saveConfig('defaultAISupplier', value.id);
+                    updateMenus(true);
+                }
+            });
+        });
+
         const settingsItem = {
             id: "setting-menu",
-            label: isMac ? 'Settings...' : 'Settings',
+            label: IS_MAC ? 'Settings...' : 'Settings',
             submenu: [
+                {
+                    id: "m-new-tab-action",
+                    label: "New Tab Action",
+                    submenu: landingPageItems
+                },
                 {
                     id: "m-tray-behavior",
                     label: "Tray Icon Behavior",
-                    visible: !isLinux,
+                    visible: !IS_LINUX,
                     submenu: [
                         {
                             id: "m-tb-showhide",
@@ -670,15 +951,15 @@ function createContextMenu(isTray) {
                 {
                     id: "m-close-behavior",
                     label: "On Close Behavior",
-                    visible: !isMac,
+                    visible: !IS_MAC,
                     submenu: [
                         {
                             id: "m-cb-ask",
                             label: 'Always Ask',
                             type: 'radio',
-                            checked: (!getConfig('minimizeToTrayOnClose') || isLinux) && !getConfig('exitDontAskAgain'),
+                            checked: (!getConfig('minimizeToTrayOnClose') || IS_LINUX) && !getConfig('exitDontAskAgain'),
                             click: (menuItem) => {
-                                if (!isLinux) {
+                                if (!IS_LINUX) {
                                     saveConfig('minimizeToTrayOnClose', !menuItem.checked);
                                 }
                                 saveConfig('exitDontAskAgain', !menuItem.checked);
@@ -688,7 +969,7 @@ function createContextMenu(isTray) {
                         {
                             id: "m-cb-tray",
                             label: 'Minimize to Tray',
-                            visible: !isLinux,
+                            visible: !IS_LINUX,
                             type: 'radio',
                             checked: getConfig('minimizeToTrayOnClose'),
                             click: (menuItem) => {
@@ -703,7 +984,7 @@ function createContextMenu(isTray) {
                             type: 'radio',
                             checked: getConfig('exitDontAskAgain'),
                             click: (menuItem) => {
-                                if (!isLinux) {
+                                if (!IS_LINUX) {
                                     saveConfig('minimizeToTrayOnClose', !menuItem.checked);
                                 }
                                 saveConfig('exitDontAskAgain', menuItem.checked);
@@ -728,7 +1009,8 @@ function updateMenuBar() {
 
     const jsonReadyData = prepareTemplateForRenderer(barMenusTemplate);
     const hideTitleBar = getConfig('autoHideTitleBar');
-    var tabbarIsHidden = baseAppHeaderHeight === (DEFAULT_APP_HEADER_HEIGHT - DEFAULT_TITLE_BAR_HEIGHT);
+    const tabbarIsHidden = baseAppHeaderHeight === (DEFAULT_APP_HEADER_HEIGHT - DEFAULT_TITLE_BAR_HEIGHT);
+    const addTabJsonReadyData = prepareTemplateForRenderer(addTabItems);
 
     baseAppHeaderHeight = hideTitleBar
         ? (tabbarIsHidden ? baseAppHeaderHeight : baseAppHeaderHeight - DEFAULT_TITLE_BAR_HEIGHT)
@@ -736,7 +1018,7 @@ function updateMenuBar() {
 
     appHeaderHeight = Math.round(baseAppHeaderHeight * currentZoomFactor);
 
-    titleBarView.webContents.send('update-menus', { jsonReadyData, hideTitleBar });
+    titleBarView.webContents.send('update-menus', { jsonReadyData, hideTitleBar, addTabJsonReadyData });
 }
 
 function registerMenuItems(template) {
@@ -757,12 +1039,12 @@ function prepareTemplateForRenderer(template) {
 
         if (newItem.accelerator) {
             newItem.accelerator = newItem.accelerator
-                .replace(/CmdOrCtrl|CommandOrControl/g, isMac ? '⌘' : 'Ctrl')
-                .replace(/Shift/g, isMac ? '⇧' : 'Shift')
-                .replace(/Alt/g, isMac ? '⌥' : 'Alt')
-                .replace(/Option/g, isMac ? '⌥' : 'Alt');
+                .replace(/CmdOrCtrl|CommandOrControl/g, IS_MAC ? '⌘' : 'Ctrl')
+                .replace(/Shift/g, IS_MAC ? '⇧' : 'Shift')
+                .replace(/Alt/g, IS_MAC ? '⌥' : 'Alt')
+                .replace(/Option/g, IS_MAC ? '⌥' : 'Alt');
 
-            if (isMac) {
+            if (IS_MAC) {
                 newItem.accelerator = newItem.accelerator.replace(/\+/g, '');
             }
         }
@@ -785,8 +1067,8 @@ function toggleTitleBar() {
 }
 
 async function quitApp(fromExit = false) {
-    if (getConfig('minimizeToTrayOnClose') || isMac) {
-        if (fromExit && !isMac) {
+    if (getConfig('minimizeToTrayOnClose') || IS_MAC) {
+        if (fromExit && !IS_MAC) {
             exit();
         }
 
@@ -794,13 +1076,13 @@ async function quitApp(fromExit = false) {
         updateMenus();
     }
     else if (!getConfig("exitDontAskAgain")) {
-        const choice = await dialog.showMessageBoxSync(mainWindow, {
+        const choice = await dialog.showMessageBox(mainWindow, {
             type: 'question',
             buttons: ['Exit', 'Exit & Don\'t Ask Again', 'Cancel'],
             defaultId: 0,
             cancelId: 2,
             title: 'Confirm Exit',
-            message: 'Are you sure you want to exit ' + appTitle + '?',
+            message: 'Are you sure you want to exit ' + APP_NAME + '?',
             detail: 'Tip: You can enable "Minimize to Tray on Close" in Settings to keep the app running in the background.'
         });
 
@@ -827,12 +1109,29 @@ function exit() {
     app.quit();
 }
 
-async function checkIsRealChatURL(tabView) {
+function isGeminiRealChatURL(tabView) {
     const currentURL = tabView.webContents.getURL();
     const geminiChatRegex = /gemini\.google\.com\/app\/[0-9a-fA-F]{16}/;
 
-    isRealChatURL = geminiChatRegex.test(currentURL);
-    updateMenus();
+    return geminiChatRegex.test(currentURL);
+}
+
+function isGoogleSearchAIModeRealChatURL(tabView) {
+    const currentURL = tabView.webContents.getURL();
+    const targetUrl = new URL(constants.AI_SUPPLIERS.G_SEACH_AI_MODE.landingPage);
+    const currentUrlObj = new URL(currentURL);
+
+    const isBaseMatch = currentUrlObj.origin === targetUrl.origin &&
+        currentUrlObj.pathname === targetUrl.pathname;
+
+    const targetParams = targetUrl.searchParams;
+    const currentParams = currentUrlObj.searchParams;
+
+    const isQueryMatch = Array.from(targetParams.keys()).every(key =>
+        currentParams.has(key) && currentParams.get(key) === targetParams.get(key)
+    );
+
+    return isBaseMatch && isQueryMatch;
 }
 
 function createNewTabInstance(id, url, sendMsg = false) {
@@ -858,9 +1157,8 @@ function createNewTabInstance(id, url, sendMsg = false) {
     // tabView.webContents.on('did-finish-load', async () => {
     // });
 
-    tabView.webContents.on('did-navigate-in-page', async (event, url) => {
-        await checkIsRealChatURL(tabView);
-    });
+    // tabView.webContents.on('did-navigate-in-page', (event, url) => {
+    // });
 
     tabView.webContents.on('page-title-updated', async (e, title) => {
         if (title && title.trim() !== "") {
@@ -911,11 +1209,13 @@ function createNewTabInstance(id, url, sendMsg = false) {
     //     console.log('will-frame-navigate', targetUrl);
     // });
 
-    const zoomFactor = titleBarView.webContents.getZoomFactor();
-    if (currentZoomFactor !== zoomFactor) {
-        currentZoomFactor = zoomFactor;
-        updateMenus();
-    }
+    // const zoomFactor = titleBarView.webContents.getZoomFactor();
+    // if (currentZoomFactor !== zoomFactor) {
+    //     currentZoomFactor = zoomFactor;
+    //     updateMenus();
+    // }
+
+    toggleApplicationTheme(getConfig('theme') ?? 'system');
 }
 
 app.whenReady().then(createMainWindow);
@@ -1022,7 +1322,7 @@ function restoreTabViewSize(activeTabView, bounds = null) {
 }
 
 function convertHtmlImagesToBase64(htmlContent, eventSenderWebContents, outerHTML = true) {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
         let workerWindow = new BrowserWindow({
             show: false,
             webPreferences: {
@@ -1030,7 +1330,10 @@ function convertHtmlImagesToBase64(htmlContent, eventSenderWebContents, outerHTM
             }
         });
 
-        workerWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+        const tempFilePath = path.join(app.getPath('temp'), `worker_temp_${Date.now()}.html`);
+        await fs.promises.writeFile(tempFilePath, htmlContent, 'utf-8');
+
+        workerWindow.loadURL(`file://${tempFilePath}`);
 
         workerWindow.webContents.on('did-finish-load', async () => {
             try {
@@ -1064,8 +1367,8 @@ function convertHtmlImagesToBase64(htmlContent, eventSenderWebContents, outerHTM
                             headers: {
                                 'Cookie': cookieString,
                                 'User-Agent': APP_USER_AGENT,
-                                'Referer': constants.LANDING_URL,
-                                'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'
+                                'Referer': `${new URL(imgUrls).origin}/`,
+                                'Accept': 'image/avif,image/webp,image/png,image/*,*/*;q=0.8'
                             }
                         });
 
@@ -1107,12 +1410,15 @@ function convertHtmlImagesToBase64(htmlContent, eventSenderWebContents, outerHTM
 }
 
 function generatePdfFromEmbeddedHtml(embeddedHtmlContent) {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
         let workerWindow = new BrowserWindow({
             show: false
         });
 
-        workerWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(embeddedHtmlContent)}`);
+        const tempFilePath = path.join(app.getPath('temp'), `worker_temp_${Date.now()}.html`);
+        await fs.promises.writeFile(tempFilePath, embeddedHtmlContent, 'utf-8');
+
+        workerWindow.loadURL(`file://${tempFilePath}`);
 
         workerWindow.webContents.on('did-finish-load', async () => {
             try {
@@ -1125,6 +1431,7 @@ function generatePdfFromEmbeddedHtml(embeddedHtmlContent) {
                 resolve(pdfBuffer);
 
             } catch (err) {
+                console.error(err);
                 reject(err);
             } finally {
                 if (workerWindow) {
@@ -1136,8 +1443,8 @@ function generatePdfFromEmbeddedHtml(embeddedHtmlContent) {
     });
 }
 
-async function blurActiveTabView() {
-    const activeTab = getActiveTabView();
+async function blurActiveTabView(activeTab = null) {
+    if (!activeTab) activeTab = getActiveTabView();
     let base64Data = null;
     let image = null;
 
@@ -1168,6 +1475,354 @@ function unblurActiveTabView() {
     resizeViews();
 }
 
+function parseAcceptToFilters(acceptStr) {
+    if (!acceptStr) return [];
+
+    const extensions = CONVERTIBLE_TO_PDF_EXTS;
+    const items = acceptStr.split(',');
+
+    items.forEach(item => {
+        const trimmed = item.trim().toLowerCase();
+        if (trimmed.startsWith('.')) {
+            extensions.push(trimmed.substring(1));
+        }
+
+        else if (trimmed.includes('/')) {
+            const ext = trimmed.split('/')[1];
+            if (ext && ext !== '*') {
+                extensions.push(ext);
+            }
+        }
+    });
+
+    const uniqueExts = Array.from(new Set(extensions));
+    if (uniqueExts.includes('jpeg') && !uniqueExts.includes('jpg')) uniqueExts.push('jpg');
+
+    return [{ name: 'Custom Files', extensions: uniqueExts }];
+}
+
+function getExactMimeType(ext) {
+    const map = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.pdf': 'application/pdf',
+        '.webp': 'image/webp',
+        '.bmp': 'image/bmp',
+        '.avif': 'image/avif',
+        '.heic': 'image/heic',
+        '.heif': 'image/heif'
+    };
+    return map[ext] || 'application/octet-stream';
+}
+
+function strictSafeFilename(userInputName, defaultTitle) {
+    let safeName = userInputName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+
+    safeName = safeName.replace(/^\.+/, '');
+
+    return safeName || defaultTitle;
+}
+
+async function exportHTMLContent(sender, htmlContent, type) {
+    await blurActiveTabView();
+    const focusedWindow = BrowserWindow.getFocusedWindow();
+
+    let fileTitle = 'exported_conversation';
+    let filters = { name: 'All (*.*)', extensions: [''] };
+    let content = '';
+
+    try {
+        const match = htmlContent.match(/<h1 class="export-title">([\s\S]*?)<\/h1>/);
+
+        if (match) {
+            fileTitle = strictSafeFilename(match[1].trim(), fileTitle);
+        }
+
+        switch (type) {
+            case 'html':
+                content = await convertHtmlImagesToBase64(htmlContent, sender);
+                filters = { name: 'HTML Document (*.' + type + ';*.htm)', extensions: [type, 'htm'] };
+                break;
+            case 'pdf':
+                content = await generatePdfFromEmbeddedHtml(await convertHtmlImagesToBase64(htmlContent, sender));
+                filters = { name: 'PDF Document (*.' + type + ')', extensions: [type] };
+                break;
+            case 'doc':
+                content = await convertHtmlImagesToBase64(htmlContent, sender);
+                filters = { name: 'Word 97-2003 Document (*.' + type + ')', extensions: [type] };
+                break;
+        }
+
+        unblurActiveTabView();
+
+        const { canceled, filePath } = await dialog.showSaveDialog(focusedWindow, {
+            title: 'Save As',
+            defaultPath: path.join(app.getPath('downloads'), fileTitle + `_${Date.now()}.` + type),
+            filters: [
+                filters
+            ]
+        });
+
+        if (!canceled && filePath) {
+            await fs.promises.writeFile(filePath, content, 'utf-8');
+            const notice = new Notification({
+                title: 'Export Success',
+                body: 'Your file is ready.',
+                silent: false,
+                icon: 'assets/icon.png'
+            })
+
+            notice.show()
+        }
+
+    } catch (err) { }
+}
+
+ipcMain.handle('upload-files', async (event, acceptString) => {
+    try {
+        const webContents = event.sender;
+        const win = BrowserWindow.fromWebContents(webContents);
+
+        const customFilters = parseAcceptToFilters(acceptString);
+
+        const result = await dialog.showOpenDialog(win, {
+            title: 'Open',
+            properties: ['openFile', 'multiSelections'],
+            filters: customFilters
+        });
+
+        if (result.canceled || result.filePaths.length === 0) {
+            return [];
+        } else {
+            const pdfBuffers = [];
+            const tempFilesToClean = [];
+
+            for (const filePath of result.filePaths) {
+                const fileName = path.basename(filePath);
+                const ext = path.extname(filePath).toLowerCase();
+                const cleanExt = ext.replace(/^\./, '');
+
+                const commonGlobalStyles = `
+                    @page { size: A4; margin: 0; }
+                    body { 
+                        font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; 
+                        margin: 0; padding: 50px; 
+                        color: #1e293b; background-color: #ffffff; 
+                        line-height: 1.6; font-size: 15px;
+                    }
+                    .file-banner { 
+                        font-size: 12px; font-weight: 600; color: #64748b; 
+                        padding-bottom: 12px; margin-bottom: 35px; 
+                        border-bottom: 1px solid #e2e8f0;
+                        letter-spacing: 1px; text-transform: uppercase;
+                    }
+                    pre { 
+                        font-family: "Consolas", "Fira Code", "Courier New", monospace; 
+                        font-size: 13px; line-height: 1.5; color: #0f172a;
+                        white-space: pre-wrap; word-break: break-all; margin: 0; 
+                    }
+                `;
+
+                if (ext === '.pdf') {
+                    const pdfBytes = await fs.promises.readFile(filePath);
+                    const pdfDoc = await PDFDocument.load(pdfBytes);
+                    const pages = pdfDoc.getPages();
+
+                    if (pages.length > 0) {
+                        const firstPage = pages[0];
+                        const width = firstPage.getWidth();
+                        const height = firstPage.getHeight();
+
+                        const headerHtml = `
+                        <html>
+                        <head>
+                            <style>
+                                @page { size: ${width}pt ${height}pt; margin: 0; }
+                                body { 
+                                    font-family: "Microsoft YaHei", -apple-system, sans-serif; 
+                                    margin: 0; padding: 25px 40px;
+                                    background-color: transparent;
+                                }
+                                .pdf-chinese-header { 
+                                    font-size: 11px; font-weight: 600; color: #64748b; 
+                                    padding-bottom: 6px;
+                                    border-bottom: 1px solid #e2e8f0; 
+                                    letter-spacing: 0.5px;
+                                }
+                            </style>
+                        </head>
+                        <body>
+                            <div class="pdf-chinese-header">PDF SOURCE: ${fileName}</div>
+                        </body>
+                        </html>`;
+
+                        const ghostWindow = new BrowserWindow({ show: false });
+                        await ghostWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(headerHtml)}`);
+                        const headerPdfData = await ghostWindow.webContents.printToPDF({
+                            printBackground: false
+                        });
+                        ghostWindow.close();
+
+                        const headerDoc = await PDFDocument.load(headerPdfData);
+
+                        const [embeddedHeaderPage] = await pdfDoc.embedPages([headerDoc.getPages()[0]]);
+
+                        firstPage.drawPage(embeddedHeaderPage, {
+                            x: 0,
+                            y: 0,
+                            width: width,
+                            height: height
+                        });
+                    }
+
+                    const modifiedPdfBytes = await pdfDoc.save();
+                    pdfBuffers.push(modifiedPdfBytes);
+                }
+                else if (CONVERTIBLE_TO_PDF_EXTS.includes(cleanExt)) {
+                    let htmlContent = '';
+
+                    if (WORD_DOC_EXTS.includes(cleanExt)) {
+                        const docResult = await mammoth.convertToHtml({ path: filePath });
+                        htmlContent = `
+                        <html>
+                        <head>
+                            <style>
+                                ${commonGlobalStyles}
+                                table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                                th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; }
+                                th { background-color: #f8fafc; font-weight: 600; }
+                            </style>
+                        </head>
+                        <body>
+                            <div class="file-banner">DOCUMENT: ${fileName}</div>
+                            <div class="word-content">${docResult.value}</div>
+                        </body>
+                        </html>`;
+                    }
+                    else if (EXCEL_DATA_SHEET_EXTS.includes(cleanExt)) {
+                        const jsonArray = await csvtojson().fromFile(filePath);
+
+                        if (jsonArray.length > 0) {
+                            const headers = Object.keys(jsonArray[0]);
+                            let tableRows = '';
+
+                            tableRows += '<tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr>';
+
+                            jsonArray.forEach(row => {
+                                tableRows += '<tr>' + headers.map(h => `<td>${row[h] || ''}</td>`).join('') + '</tr>';
+                            });
+
+                            htmlContent = `
+                            <html>
+                            <head>
+                                <style>
+                                    ${commonGlobalStyles}
+                                    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+                                    th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; color: #334155; }
+                                    th { background-color: #f8fafc; color: #0f172a; font-weight: 600; }
+                                    tr:nth-child(even) { background-color: #fdfdfd; } 
+                                </style>
+                            </head>
+                            <body>
+                                <div class="file-banner">DATA SHEET SOURCE: ${fileName}</div>
+                                <table>${tableRows}</table>
+                            </body>
+                            </html>`;
+                        }
+                    }
+                    else if (IMAGE_EXTS.includes(cleanExt)) {
+                        const imageBuffer = await fs.promises.readFile(filePath);
+                        const base64Data = imageBuffer.toString('base64');
+                        const mimeType = ext === 'jpg' ? 'image/jpeg' : `image/${cleanExt}`;
+
+                        htmlContent = `
+                        <html>
+                        <head>
+                            <style>
+                                ${commonGlobalStyles}
+                                body { text-align: center; }
+                                .img-container { 
+                                    width: 100%; height: 75vh; 
+                                    display: flex; justify-content: center; align-items: center; 
+                                    margin-top: 20px; 
+                                }
+                                img { 
+                                    max-width: 100%; max-height: 100%; object-fit: contain; 
+                                    border: 1px solid #e2e8f0; padding: 6px; background: #ffffff;
+                                }
+                            </style>
+                        </head>
+                        <body>
+                            <div class="file-banner">IMAGE SOURCE: ${fileName}</div>
+                            <div class="img-container">
+                                <img src="data:${mimeType};base64,${base64Data}" />
+                            </div>
+                        </body>
+                        </html>`;
+                    }
+                    else if (PLAIN_TEXT_EXTS.includes(cleanExt)) {
+                        const rawBuffer = await fs.promises.readFile(filePath, 'utf-8');
+                        const rawText = rawBuffer.toString('utf8');
+                        const sanitizedText = rawText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+                        htmlContent = `
+                        <html>
+                        <head>
+                            <style>${commonGlobalStyles}</style>
+                        </head>
+                        <body>
+                            <div class="file-banner">TEXT SOURCE: ${fileName}</div>
+                            <pre>${sanitizedText}</pre>
+                        </body>
+                        </html>`;
+                    }
+
+                    if (htmlContent) {
+                        const pdfData = await generatePdfFromEmbeddedHtml(htmlContent);
+                        pdfBuffers.push(pdfData);
+                    }
+                }
+            }
+
+            const mergedPdf = await PDFDocument.create();
+
+            for (const pdfBuffer of pdfBuffers) {
+                const srcDoc = await PDFDocument.load(pdfBuffer);
+                const copiedPages = await mergedPdf.copyPages(srcDoc, srcDoc.getPageIndices());
+                copiedPages.forEach((page) => mergedPdf.addPage(page));
+            }
+
+            const finalPdfBytes = await mergedPdf.save();
+
+            const finalPdfPath = path.join(app.getPath('temp'), `merged_files_${Date.now()}.pdf`);
+            await fs.promises.writeFile(finalPdfPath, finalPdfBytes);
+
+            return [finalPdfPath];
+        }
+    }
+    catch (e) {
+        console.error(e);
+    }
+});
+
+ipcMain.handle('get-file-data', async (event, filePath) => {
+    try {
+        const stats = await fs.promises.stat(filePath);
+        const buffer = await fs.promises.readFile(filePath);
+        const ext = path.extname(filePath).toLowerCase();
+
+        return {
+            name: path.basename(filePath),
+            size: stats.size,
+            type: getExactMimeType(ext),
+            bytes: new Uint8Array(buffer)
+        };
+    } catch (err) {
+        return null;
+    }
+});
+
 ipcMain.handle('create-tab', (event, { id, url }) => {
     createNewTabInstance(id, url);
 });
@@ -1181,7 +1836,6 @@ ipcMain.handle('switch-tab', (event, { id }) => {
             tabView.isVisible = true;
             restoreTabViewSize(tabView, bounds);
             tabView.webContents.focus();
-            checkIsRealChatURL(tabView);
         } else {
             tabView.isVisible = false;
             tabView.setBounds({ x: 10000, y: 10000, width: 1, height: 1 });
@@ -1215,8 +1869,16 @@ ipcMain.handle('get-config', (event, { key }) => {
     return getConfig(key);
 });
 
-ipcMain.handle('get-constants', () => {
-    return constants;
+// ipcMain.handle('get-constants', () => {
+//     return constants;
+// });
+
+ipcMain.handle('is-google-search-ai-mode-real-chat-url', () => {
+    return isGoogleSearchAIModeRealChatURL(getActiveTabView());
+});
+
+ipcMain.handle('get-default-ai-supplier', () => {
+    return getDefaultAISupplier();
 });
 
 ipcMain.handle('web-theme-changed', (event, theme) => {
@@ -1245,12 +1907,7 @@ ipcMain.handle('max-window', async () => {
         mainWindow.maximize();
     }
 
-    if (isLinux) {
-        setTimeout(resizeViews, 50);
-    }
-    else {
-        resizeViews();
-    }
+    resizeViews();
 });
 
 ipcMain.handle('close-window', async () => {
@@ -1259,6 +1916,8 @@ ipcMain.handle('close-window', async () => {
 
 ipcMain.handle('click-menu-item', (event, itemId) => {
     const targetMenuItem = menuItemsRegistry.get(itemId);
+
+    if (!targetMenuItem) return;
 
     if (targetMenuItem.type === 'checkbox') {
         targetMenuItem.checked = !targetMenuItem.checked;
@@ -1273,50 +1932,7 @@ ipcMain.handle('click-menu-item', (event, itemId) => {
 });
 
 ipcMain.handle('export-html-content', async (event, { htmlContent, type }) => {
-    await blurActiveTabView();
-    const focusedWindow = BrowserWindow.getFocusedWindow();
-
-    let fileTitle = 'exported_conversation';
-    let filters = { name: 'All (*.*)', extensions: [''] };
-    let content = '';
-
-    try {
-        const match = htmlContent.match(/<h1 class="export-title">([\s\S]*?)<\/h1>/);
-
-        if (match) {
-            fileTitle = match[1].trim();
-        }
-
-        switch (type) {
-            case 'html':
-                content = await convertHtmlImagesToBase64(htmlContent, event.sender);
-                filters = { name: 'HTML Document (*.' + type + ';*.htm)', extensions: [type, 'htm'] };
-                break;
-            case 'pdf':
-                content = await generatePdfFromEmbeddedHtml(await convertHtmlImagesToBase64(htmlContent, event.sender));
-                filters = { name: 'PDF Document (*.' + type + ')', extensions: [type] };
-                break;
-            case 'doc':
-                content = await convertHtmlImagesToBase64(htmlContent, event.sender);
-                filters = { name: 'Word 97-2003 Document (*.' + type + ')', extensions: [type] };
-                break;
-        }
-
-        unblurActiveTabView();
-
-        const { canceled, filePath } = await dialog.showSaveDialog(focusedWindow, {
-            title: 'Save As',
-            defaultPath: path.join(app.getPath('downloads'), fileTitle + `_${Date.now()}.` + type),
-            filters: [
-                filters
-            ]
-        });
-
-        if (!canceled && filePath) {
-            fs.writeFileSync(filePath, content, 'utf-8');
-        }
-
-    } catch (err) { console.error(err); }
+    await exportHTMLContent(event.sender, htmlContent, type);
 });
 
 ipcMain.handle('menus-updated', () => {

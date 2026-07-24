@@ -186,7 +186,6 @@ body::before {
     border-bottom: 1px solid var(--border-bar);
     box-sizing: border-box;
     width: 100% !important;
-    overflow: hidden;
     transition: background-color 0.25s ease, border-color 0.25s ease;
 }
 
@@ -333,22 +332,36 @@ body::before {
     color: var(--text-tab-active);
 }
 
-#add-btn {
+#dynamic-add-menus-wrapper>#add-btn {
     background: none;
     border: none;
     color: var(--text-tab);
     font-size: 20px;
     cursor: pointer;
-    flex: 0 0 36px !important;
-    width: 36px !important;
-    min-width: 36px !important;
-    height: 30px;
+    flex: 0 0 42px !important;
+    width: 42px !important;
+    min-width: 42px !important;
+    height: 40px;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: color 0.2s, transform 0.1s;
-    margin-left: 6px;
-    margin-right: 6px;
+}
+
+.menu-item>#add-btn {
+    background: none;
+    border: none;
+    color: var(--text-tab);
+    font-size: 20px;
+    cursor: pointer;
+    flex: 0 0 22px !important;
+    width: 22px !important;
+    min-width: 22px !important;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s, transform 0.1s;
 }
 
 #add-btn:hover {
@@ -358,6 +371,18 @@ body::before {
 
 #add-btn:active {
     transform: scale(0.95);
+}
+
+#dynamic-add-menus-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+#dynamic-add-menus-wrapper .menu-item.is-active>.dropdown {
+    display: block;
+    right: 0;
+    left: auto;
 }
 
 .dropdown {

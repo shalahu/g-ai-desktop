@@ -1,5 +1,4 @@
 const tabsList = document.getElementById('tabs-list');
-const addBtn = document.getElementById('add-btn');
 
 let menuItems = null;
 let leaveTimeout = null;
@@ -49,7 +48,7 @@ function updateTabsUI() {
 
         const closeBtn = document.createElement('button');
         closeBtn.className = 'tab-close-btn';
-        closeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://w3.org"> <path d="M0,0 L10,10 M10,0 L0,10" stroke="currentColor" stroke-width="1" /> </svg>';
+        closeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"> <path d="M0,0 L10,10 M10,0 L0,10" stroke="currentColor" stroke-width="1" /> </svg>';
         closeBtn.title = "Close Tab";
         closeBtn.onclick = (e) => {
             e.stopPropagation();
@@ -91,13 +90,13 @@ async function switchTab(tabId) {
     await window.electronAPI.switchTab({ id: tabId });
 }
 
-function setThemeStyle(themeName) {
+async function setThemeStyle(themeName) {
     if (themeName === 'dark') {
         document.documentElement.setAttribute('data-theme', 'dark');
-        window.electronAPI.changeWindowBg({ color: '#131314' });
+        await window.electronAPI.changeWindowBg({ color: '#131314' });
     } else {
         document.documentElement.removeAttribute('data-theme');
-        window.electronAPI.changeWindowBg({ color: '#f0f4f9' });
+        await window.electronAPI.changeWindowBg({ color: '#f0f4f9' });
     }
     updateTabsUI();
 }
@@ -121,12 +120,12 @@ function generateSubmenuHTML(submenu) {
         return `
       <div class="${rowClass}" id="${item.id || ''}" ${item.RemoveTabIndex ? '' : 'tabindex="0"'}>
         ${item.checked
-                ? '<span class="radio-indicator"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" xmlns="http://w3.org"><path d="M3 8.5L6.5 12L13 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'
+                ? '<span class="radio-indicator"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 8.5L6.5 12L13 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'
                 : ''}
         ${item.label}
         ${item.accelerator ? `<span class="shortcut">${item.accelerator}</span>` : ''}
         ${hasSubmenu ? `
-          <span class="arrow"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" xmlns="http://w3.org"> <path d="M6 3L11 8L6 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span class="arrow"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M6 3L11 8L6 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
           <div class="dropdown" id="${item.id}">
             ${generateSubmenuHTML(item.submenu)}
           </div>
@@ -136,11 +135,11 @@ function generateSubmenuHTML(submenu) {
     }).join('');
 }
 
-function deactivateAllMenus() {
+async function deactivateAllMenus() {
     isMenuActivated = false;
     menuItems.forEach(item => item.classList.remove('is-active'));
     document.body.style.setProperty('--bg-opacity', '0');
-    window.electronAPI.mouseLeaveMenu();
+    await window.electronAPI.mouseLeaveMenu();
 }
 
 function onMousenEnterMenu(item) {
@@ -176,8 +175,8 @@ window.electronAPI.onTitleChanged(({ id, title }) => {
 //     }
 // });
 
-window.electronAPI.onThemeChanged((themeName) => {
-    setThemeStyle(themeName);
+window.electronAPI.onThemeChanged(async (themeName) => {
+    await setThemeStyle(themeName);
 });
 
 window.electronAPI.onNewTabCreated(async ({ id, url }) => {
@@ -212,7 +211,9 @@ window.electronAPI.onSetTabBarBackground((base64Image) => {
     });
 });
 
-window.electronAPI.onUpdateMenus(({ jsonReadyData, hideTitleBar }) => {
+window.electronAPI.onUpdateMenus(async ({ jsonReadyData, hideTitleBar, addTabJsonReadyData }) => {
+    const defaultAISupplier = await window.electronAPI.getDefaultAISupplier();
+
     const wrapper = document.getElementById('dynamic-menus-wrapper');
     if (!wrapper) return;
 
@@ -232,16 +233,39 @@ window.electronAPI.onUpdateMenus(({ jsonReadyData, hideTitleBar }) => {
 
     wrapper.innerHTML = newHTML;
 
+    const defaltAISupplierSet = addTabJsonReadyData.length > 0;
+    let defaultAISupplierLabel = defaltAISupplierSet ? '' : ' - ' + defaultAISupplier.label;
+    let addBtnHtml = `<button id="add-btn" title="New Tab${defaultAISupplierLabel}"><svg width="12" height="12" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 1V15M1 8H15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                </svg></button>`;
+    const addWrapper = document.getElementById('dynamic-add-menus-wrapper');
+
+    if (defaltAISupplierSet) {
+        const startHtml = `<div class="menu-item" tabindex="0">
+                ${addBtnHtml}
+                <div class="dropdown" id="add-btn-dropdown">`;
+        const endHtml = `</div>
+            </div>`
+        innerHtml = generateSubmenuHTML(addTabJsonReadyData);
+        addWrapper.innerHTML = startHtml + innerHtml + endHtml;
+    }
+    else {
+        addWrapper.innerHTML = addBtnHtml;
+        document.getElementById('add-btn').onclick = async () => {
+            createNewTab(defaultAISupplier.landingPage);
+        };
+    }
+
     menuItems = document.querySelectorAll('.menu-item');
 
     menuItems.forEach(item => {
-        item.addEventListener('mouseenter', () => {
+        item.addEventListener('mouseenter', async () => {
             if (leaveTimeout) {
                 clearTimeout(leaveTimeout);
                 leaveTimeout = null;
             }
 
-            window.electronAPI.mouseEnterMenu();
+            await window.electronAPI.mouseEnterMenu();
 
             if (isMenuActivated) {
                 onMousenEnterMenu(item);
@@ -252,15 +276,15 @@ window.electronAPI.onUpdateMenus(({ jsonReadyData, hideTitleBar }) => {
             if (!isMenuActivated) {
                 if (leaveTimeout) clearTimeout(leaveTimeout);
 
-                leaveTimeout = setTimeout(() => {
-                    window.electronAPI.mouseLeaveMenu();
+                leaveTimeout = setTimeout(async () => {
+                    await window.electronAPI.mouseLeaveMenu();
 
                     leaveTimeout = null;
                 }, 150);
             }
         });
 
-        item.addEventListener('click', (event) => {
+        item.addEventListener('click', async (event) => {
             const clickedRow = event.target.closest('.dropdown-row');
 
             if (clickedRow) {
@@ -272,10 +296,10 @@ window.electronAPI.onUpdateMenus(({ jsonReadyData, hideTitleBar }) => {
                 }
 
                 if (clickedRow.id) {
-                    window.electronAPI.clickMenuItem(clickedRow.id);
+                    await window.electronAPI.clickMenuItem(clickedRow.id);
                 }
 
-                deactivateAllMenus();
+                await deactivateAllMenus();
 
                 return;
             }
@@ -283,7 +307,7 @@ window.electronAPI.onUpdateMenus(({ jsonReadyData, hideTitleBar }) => {
             event.stopPropagation();
 
             if (item.classList.contains('is-active')) {
-                deactivateAllMenus();
+                await deactivateAllMenus();
             } else {
                 isMenuActivated = true;
 
@@ -294,7 +318,7 @@ window.electronAPI.onUpdateMenus(({ jsonReadyData, hideTitleBar }) => {
 
     document.querySelector('.window-title-bar').style.display = hideTitleBar ? 'none' : 'flex';
 
-    window.electronAPI.menusUpdated();
+    await window.electronAPI.menusUpdated();
 });
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -305,46 +329,41 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, { passive: false });
     }
 
-    addBtn.onclick = async () => {
-        var landingUrl = (await window.electronAPI.getConstants()).LANDING_URL;
-        createNewTab(landingUrl);
-    };
-
     const currentTheme = await window.electronAPI.getCurrentTheme();
-    setThemeStyle(currentTheme);
+    await setThemeStyle(currentTheme);
 
     setTimeout(async () => {
-        var landingUrl = (await window.electronAPI.getConstants()).LANDING_URL;
+        const landingUrl = (await window.electronAPI.getDefaultAISupplier()).landingPage;
         createNewTab(landingUrl);
-    }, 100);
+    }, 150);
 
-    document.getElementById("win-min-btn").addEventListener("click", () => window.electronAPI.minWindow());
+    document.getElementById("win-min-btn").addEventListener("click", async () => await window.electronAPI.minWindow());
 
     const maxBtn = document.getElementById("win-max-btn");
-    maxBtn.addEventListener("click", () => {
+    maxBtn.addEventListener("click", async () => {
         if (maxBtn.innerHTML.includes('path') || maxBtn.title === "Restore") {
             maxBtn.innerHTML
-                = `<svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://w3.org">
+                = `<svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
                 <rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/>
                 </svg>`;
             maxBtn.title = "Maxmize";
         }
         else {
-            maxBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://w3.org">
+            maxBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
                 <path d="M2.5,2.5 L2.5,0.5 L9.5,0.5 L9.5,7.5 L7.5,7.5" fill="none" stroke="currentColor" stroke-width="1" />
                 <rect x="0.5" y="2.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1" />
                 </svg>`;
             maxBtn.title = "Restore";
         }
 
-        window.electronAPI.maxWindow();
+        await window.electronAPI.maxWindow();
     });
 
-    document.getElementById("win-close-btn").addEventListener("click", () => window.electronAPI.closeWindow());
+    document.getElementById("win-close-btn").addEventListener("click", async () => await window.electronAPI.closeWindow());
 
-    document.addEventListener('click', () => {
+    document.addEventListener('click', async () => {
         if (isMenuActivated) {
-            deactivateAllMenus();
+            await deactivateAllMenus();
         }
     });
 });
