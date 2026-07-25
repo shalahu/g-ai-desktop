@@ -1,0 +1,159 @@
+name: Build and Publish Electron App
+
+on:
+  workflow_call:
+    inputs:
+      publish:
+        required: true
+        type: boolean
+        default: false
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Download Frontend Build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+
+      - name: Build Electron App (macOS)
+        run: npm run dist -- --mac --x64 --publish never
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate Checksums
+        run: |
+          cd dist
+          shasum -a 256 *.dmg > checksums-macos-x64.txt || echo "No dmg generated yet"
+
+      - name: Upload to GitHub Release
+        if: ${{ inputs.publish }}
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          draft: true
+          fail_on_unmatched_files: false
+          files: |
+            dist/*.dmg
+            dist/checksums-macos-x64.txt
+
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Download Frontend Build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+
+      - name: Build Electron App (Windows)
+        run: npm run dist -- --win --x64 --publish never
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate Checksums
+        shell: powershell
+        run: |
+          if (Test-Path "dist") {
+            cd dist
+            Get-FileHash *.exe -Algorithm SHA256 -ErrorAction SilentlyContinue | ForEach-Object { 
+              $filename = [System.IO.Path]::GetFileName($_.Path)
+              "$($_.Hash.ToLower()) $filename"
+            } > checksums-windows-x64.txt
+          }
+
+      - name: Upload to GitHub Release
+        if: ${{ inputs.publish }}
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          draft: true
+          fail_on_unmatched_files: false
+          files: |
+            dist/*.exe
+            dist/checksums-windows-x64.txt
+
+  build-linux:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Download Frontend Build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+
+      - name: Build Electron App (Linux)
+        run: npm run dist -- --linux --publish never
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate Checksums
+        run: |
+          cd dist
+          sha256sum *.AppImage *.deb > checksums-linux-x64.txt || echo "No linux builds found"
+
+      - name: Upload to GitHub Release
+        if: ${{ inputs.publish }}
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          draft: true
+          fail_on_unmatched_files: false
+          files: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/checksums-linux-x64.txt

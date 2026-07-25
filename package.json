@@ -2,19 +2,23 @@
   "name": "g-ai-desktop",
   "version": "0.10.0",
   "productName": "G-AI Desktop",
+  "author": "g-ai <shalahu@163.com>",
+  "icon": "assets/icon.png", 
   "copyright": "Copyright © 2026 g-ai",
   "main": "main.js",
   "scripts": {
-    "start": "electron . --no-sandbox",
-    "build": "electron-builder"
+    "start": "electron .",
+    "build": "echo 'No frontend build step required'",
+    "dist": "electron-builder"
   },
-  "dependencies": {},
-  "devDependencies": {
-    "electron": "^39.0.0",
-    "electron-builder": "^26.0.0",
+  "dependencies": {
     "csvtojson": "^2.0.10",
     "mammoth": "^1.8.0",
     "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.0"
   },
   "build": {
     "appId": "com.g-ai.desktop",
@@ -23,12 +27,14 @@
       "output": "dist"
     },
     "win": {
+      "icon": "assets/icon.ico",
       "target": [
         "nsis",
         "portable"
       ]
     },
     "mac": {
+      "icon": "assets/icon.icns",
       "category": "public.app-category.utilities",
       "target": [
         {
@@ -41,6 +47,8 @@
       ]
     },
     "linux": {
+      "icon": "assets/icon.png",
+      "maintainer": "g-ai <shalahu@163.com>",
       "target": [
         "AppImage",
         "deb"

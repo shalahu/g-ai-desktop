@@ -1,0 +1,43 @@
+name: Build (Frontend & Source Prep)
+
+on:
+  workflow_call:
+
+permissions: {}
+
+env:
+  NODE_VERSION: '24'
+  CI: true
+
+jobs:
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Dependencies
+        uses: ./.github/actions/retry-command
+        with:
+          command: npm ci --prefer-offline
+
+      - name: Create Base Workspace Artifact
+        run: |
+          mkdir -p dist
+          echo "Workspace Initialized" > dist/build-marker.txt
+
+      - name: Upload Frontend Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+          retention-days: 1

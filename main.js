@@ -1,4 +1,4 @@
-const { app, BaseWindow, WebContentsView, ipcMain, nativeTheme, Tray, Menu, globalShortcut, nativeImage, BrowserWindow, dialog, net, Notification } = require('electron');
+const { app, BaseWindow, WebContentsView, ipcMain, nativeTheme, Tray, Menu, globalShortcut, nativeImage, BrowserWindow, dialog, net, Notification, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const type = require('os');
@@ -18,12 +18,13 @@ const DEFAULT_MAIN_WINDOW_FRAME = getConfig('mainWindowFrame') ?? false;
 const DEFAULT_ZOOM_FACTOR = 1;
 const MIN_ZOOM_FACTOR = 0.5;
 const MAX_ZOOM_FACTOR = 2;
-const APP_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) G-AIDesktop/0.10.0 Chrome/150.0.0.0 Electron/31.7.7 Safari/537.36";
+const APP_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) G-AIDesktop/0.10.0 Chrome/150.0.0.0 Electron/39.8.10 Safari/537.36";
 const WORD_DOC_EXTS = ['doc', 'docx'];
 const EXCEL_DATA_SHEET_EXTS = ['csv']
 const PLAIN_TEXT_EXTS = ['html', 'htm', 'txt', 'md', 'rtf', 'java', 'py', 'cpp', 'js', 'css', 'cs', 'json', 'ts', 'tsx', 'jsx', 'go', 'rs', 'sh', 'bat', 'yaml', 'yml', 'xml', 'ini', 'toml', 'sql', 'kt', 'swift', 'php', 'tsv', 'log', 'vcf', 'ps1'];
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif', 'heic', 'heif'];
 const CONVERTIBLE_TO_PDF_EXTS = [...WORD_DOC_EXTS, ...EXCEL_DATA_SHEET_EXTS, ...PLAIN_TEXT_EXTS, ...IMAGE_EXTS];
+const appId = 'com.g-ai.desktop';
 
 const tabsMap = new Map();
 const menuItemsRegistry = new Map();
@@ -36,6 +37,7 @@ const constants = Object.freeze({
         },
     }),
 });
+const proxyServer = getProxyFromArgv();
 
 let appHeaderHeight = DEFAULT_APP_HEADER_HEIGHT;
 let baseAppHeaderHeight = DEFAULT_APP_HEADER_HEIGHT;
@@ -1225,43 +1227,6 @@ function createNewTabInstance(id, url, sendMsg = false) {
     toggleApplicationTheme(getConfig('theme') ?? 'system');
 }
 
-app.whenReady().then(createMainWindow);
-
-// app.on('will-quit', () => {
-//     console.log('will-quit');
-// });
-
-// app.on('window-all-closed', () => {
-//     console.log('window-all-closed');
-// });
-
-app.on('web-contents-created', (event, webContents) => {
-    webContents.on('context-menu', (e, params) => {
-
-        const defaultMenuTemplate = [
-            { label: 'Undo', role: 'undo' },
-            { label: 'Redo', role: 'redo' },
-            { type: 'separator' },
-            { label: 'Cut', role: 'cut' },
-            { label: 'Copy', role: 'copy' },
-            { label: 'Paste', role: 'paste' },
-            { type: 'separator' },
-            { label: 'Select All', role: 'selectall' },
-            { type: 'separator' },
-            { label: 'Inspect', click: () => webContents.inspectElement(params.x, params.y) }
-        ];
-
-        const menu = Menu.buildFromTemplate(defaultMenuTemplate);
-        menu.popup();
-    });
-});
-
-ipcMain.handle('change-window-bg', (event, { color }) => {
-    if (mainWindow) {
-        mainWindow.setBackgroundColor(color);
-    }
-});
-
 function readConfig() {
     try {
         if (fs.existsSync(configPath)) {
@@ -1624,6 +1589,42 @@ function createSearchWindow(tabView) {
         searchWin.webContents.send('theme-changed', currentTheme);
     });
 }
+
+function getProxyFromArgv() {
+    const args = process.argv;
+
+    const proxyArg = args.find(arg => arg.startsWith('--proxy='));
+    if (proxyArg) {
+        return proxyArg.split('=')[1];
+    }
+
+    const proxyIndex = args.indexOf('--proxy');
+    if (proxyIndex !== -1 && proxyIndex + 1 < args.length) {
+        if (!args[proxyIndex + 1].startsWith('-')) {
+            return args[proxyIndex + 1];
+        }
+    }
+
+    return null;
+}
+
+function isValidURL(str) {
+    const pattern = new RegExp(
+        '^(https?:\\/\\/)?' +
+        '((([a-z\\d]([a-z\\d-]*[a-z\\d])*)\\.)+[a-z]{2,}|' +
+        '((\\d{1,3}\\.){3}\\d{1,3}))' +
+        '(\\:\\d+)?(\\/[-a-z\\d%_.~+]*)*' +
+        '(\\?[;&a-z\\d%_.~+=-]*)?' +
+        '(\\#[-a-z\\d_]*)?$', 'i'
+    );
+    return !!pattern.test(str);
+}
+
+ipcMain.handle('change-window-bg', (event, { color }) => {
+    if (mainWindow) {
+        mainWindow.setBackgroundColor(color);
+    }
+});
 
 ipcMain.handle('upload-files', async (event, acceptString) => {
     try {
@@ -2004,4 +2005,71 @@ ipcMain.handle('stop-search', () => {
 
 ipcMain.handle('close-search-window', () => {
     if (searchWin) searchWin.close();
+});
+
+if (IS_LINUX) {
+    process.env.ELECTRON_DISABLE_SANDBOX = '1';
+    // process.env.ELECTRON_DISABLE_GPU = '1'; 
+}
+
+if (proxyServer) {
+    app.commandLine.appendSwitch('proxy-server', proxyServer);
+
+    app.commandLine.appendSwitch('proxy-bypass-list', '<local>;*.localhost;127.0.0.1');
+} else { }
+
+if (IS_WINDOWS) {
+    app.setAppUserModelId(appId);
+}
+
+app.whenReady().then(() => {
+    createMainWindow();
+
+    // app.on('will-quit', () => {
+    //     console.log('will-quit');
+    // });
+
+    // app.on('window-all-closed', () => {
+    //     console.log('window-all-closed');
+    // });
+
+    app.on('web-contents-created', (event, webContents) => {
+        webContents.on('context-menu', (e, params) => {
+            const clipboardText = clipboard.readText().trim();
+            let validURL = false;
+
+            if (clipboardText) {
+                const truncatedText = clipboardText.length > 30
+                    ? clipboardText.substring(0, 30) + '...'
+                    : clipboardText;
+
+                if (isValidURL(clipboardText)) {
+                    menuLabel = `Paste and Go to ${truncatedText}`;
+                    validURL = true;
+                } else {
+                    menuLabel = `Paste and Go`;
+                    validURL = false;
+                }
+            }
+
+            const defaultMenuTemplate = [
+                { label: 'Undo', role: 'undo' },
+                { label: 'Redo', role: 'redo' },
+                { type: 'separator' },
+                { label: 'Cut', role: 'cut' },
+                { label: 'Copy', role: 'copy' },
+                { label: 'Paste', role: 'paste' },
+                { type: 'separator' },
+                { label: 'Select All', role: 'selectall' },
+                { type: 'separator' },
+                { label: 'Copy page URL', click: () => clipboard.writeText(webContents.getURL()) },
+                { label: menuLabel, visible: validURL, click: () => webContents.loadURL(clipboardText) },
+                { type: 'separator' },
+                { label: 'Inspect', click: () => webContents.inspectElement(params.x, params.y) }
+            ];
+
+            const menu = Menu.buildFromTemplate(defaultMenuTemplate);
+            menu.popup();
+        });
+    });
 });
