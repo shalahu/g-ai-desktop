@@ -104,20 +104,12 @@ window.addEventListener('mouse-enter-menu', async (event) => {
 
 window.addEventListener('DOMContentLoaded', async () => {
     try {
-        // Object.defineProperty(window, 'top', { get: () => window });
         Object.defineProperty(window, 'parent', { get: () => window });
         window.open = (url) => { window.location.href = url; return window; };
 
-        // const constants = await ipcRenderer.invoke('get-constants');
         const isGoogleSeachAIModeRealChatURL = await ipcRenderer.invoke('is-google-search-ai-mode-real-chat-url');
         if (isGoogleSeachAIModeRealChatURL) {
             initUploadFileInput();
         }
     } catch (e) { }
 });
-
-// ipcRenderer.on('theme-changed', (event, themeName) => {
-//   if (typeof window.__SET_APP_THEME__ === 'function') {
-//     window.__SET_APP_THEME__(themeName);
-//   }
-// });

@@ -18,7 +18,7 @@ const DEFAULT_MAIN_WINDOW_FRAME = getConfig('mainWindowFrame') ?? false;
 const DEFAULT_ZOOM_FACTOR = 1;
 const MIN_ZOOM_FACTOR = 0.5;
 const MAX_ZOOM_FACTOR = 2;
-const APP_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) G-AIDesktop/0.10.0 Chrome/150.0.0.0 Electron/39.8.10 Safari/537.36";
+const APP_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) G-AIDesktop/0.11.0 Chrome/150.0.0.0 Electron/39.8.10 Safari/537.36";
 const WORD_DOC_EXTS = ['doc', 'docx'];
 const EXCEL_DATA_SHEET_EXTS = ['csv']
 const PLAIN_TEXT_EXTS = ['html', 'htm', 'txt', 'md', 'rtf', 'java', 'py', 'cpp', 'js', 'css', 'cs', 'json', 'ts', 'tsx', 'jsx', 'go', 'rs', 'sh', 'bat', 'yaml', 'yml', 'xml', 'ini', 'toml', 'sql', 'kt', 'swift', 'php', 'tsv', 'log', 'vcf', 'ps1'];
@@ -34,6 +34,9 @@ const constants = Object.freeze({
         G_GEMINI: { id: 'google_gemini', landingPage: 'https://gemini.google.com/app', title: 'Google Gemini', label: 'Google Gemini' },
         G_SEACH_AI_MODE: {
             id: 'google_search_ai_node', landingPage: 'https://www.google.com/search?udm=50', title: 'Google Search', label: 'Google Search (AI Mode)'
+        },
+        DS_CHAT: {
+            id: 'deep_seek_chat', landingPage: 'https://chat.deepseek.com/', title: 'DeepSeek', label: 'DeepSeek'
         },
     }),
 });
@@ -343,34 +346,6 @@ function createMainWindow() {
         }
     );
 
-    globalShortcut.register('F11', () => {
-        toggleFullscreen();
-    });
-
-    globalShortcut.register('CmdOrCtrl+=', () => {
-        zoomApp(0.1);
-    });
-
-    globalShortcut.register('CmdOrCtrl+-', () => {
-        zoomApp(-0.1);
-    });
-
-    globalShortcut.register('CmdOrCtrl+0', () => {
-        zoomApp(0);
-    });
-
-    globalShortcut.register('CmdOrCtrl+Shift+M', () => {
-        toggleTitleBar();
-    });
-
-    globalShortcut.register('F5', () => {
-        getActiveTabView()?.webContents.reload();
-    });
-
-    globalShortcut.register('CmdOrCtrl+F', () => {
-        createSearchWindow(getActiveTabView());
-    });
-
     if (!IS_LINUX) {
         mainWindow.on('enter-full-screen', () => {
             autoHideMenuBar();
@@ -383,7 +358,14 @@ function createMainWindow() {
 
     autoHideMenuBar();
 
-    // titleBarView.webContents.openDevTools({ mode: 'detach' });
+    titleBarView.webContents.on('context-menu', (e, params) => {
+        const defaultMenuTemplate = [
+            { label: 'Inspect', click: () => titleBarView.webContents.inspectElement(params.x, params.y) }
+        ];
+
+        const menu = Menu.buildFromTemplate(defaultMenuTemplate);
+        menu.popup();
+    });
 }
 
 function autoHideMenuBar() {
@@ -652,10 +634,9 @@ async function triggerExport(type) {
                             return "";
                         }
                     }).filter(t => t !== "").join('\\n'); 
-                const responseHTML = responses.map(res => res.innerHTML ? res.innerHTML.trim() : "").filter(t => t !== "").join('\\n');
-  
+
                 if (promptText || responseText) { 
-                    turns.push({ prompt: promptText, responseText: responseText, responseHTML: responseHTML }); 
+                    turns.push({ promptText: promptText, responseText: responseText }); 
                 } 
             }); 
             
@@ -670,14 +651,12 @@ async function triggerExport(type) {
             chatData.dialogues.forEach((round, index) => {
                 dialoguesHtml += '<div class="chat-section prompt-section">' +
                     '<div class="section-label">User Prompt #' + (index + 1) + '</div>' +
-                    '<div class="content">' + round.prompt + '</div>' +
+                    '<div class="content">' + round.promptText + '</div>' +
                     '</div>' +
                     '<div class="chat-section response-section">' +
                     '<div class="section-label">AI Response #' + (index + 1) + '</div>' +
                     '<div class="content">' + round.responseText;
-                if (round.responseHTML) {
-                    // dialoguesHtml += '<div class="code-block-wrapper"><pre>' + round.responseHTML + '</pre></div>'; 
-                }
+
                 dialoguesHtml += '</div></div>';
             });
 
@@ -687,8 +666,94 @@ async function triggerExport(type) {
 
             await exportHTMLContent(activeTabView.webContents, htmlContent, type);
         }
-    }
-    else {
+    } else if (isDeepSeekRealChatURL(activeTabView)) {
+        const isDeepSeekRealChatReady = await activeTabView.webContents.executeJavaScript(`
+                !!(document.querySelector('.ds-virtual-list-visible-items') && document.querySelector('div[data-virtual-list-item-key]'))
+                `);
+
+        if (isDeepSeekRealChatReady) {
+            await blurActiveTabView(activeTabView);
+
+            const executionResult = await activeTabView.webContents.executeJavaScript(`
+                new Promise((resolve) => {
+                    window.dispatchEvent(new Event('beforeprint'));
+
+                    setTimeout(() => {
+                        const mainLinkElement = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
+                    .find(el => el.href && el.href.includes('/main.'));
+
+                const dynamicCssUrl = mainLinkElement ? mainLinkElement.href : "";
+                         resolve({
+                    html: document.documentElement.innerHTML,
+                    cssUrl: dynamicCssUrl
+                });
+                    }, 150); 
+                });
+            `);
+
+            const htmlContent = executionResult.html;
+            const dynamicCssUrl = executionResult.cssUrl;
+
+            if (dynamicCssUrl) {
+                try {
+                    const response = await net.fetch(dynamicCssUrl);
+                    remoteCssText = await response.text();
+                } catch (netErr) { }
+            }
+
+            let extractedPrintStyles = "";
+            if (remoteCssText) {
+                let index = 0;
+                const target = "@media print";
+
+                while ((index = remoteCssText.toLowerCase().indexOf(target, index)) !== -1) {
+                    let startBrace = remoteCssText.indexOf("{", index + target.length);
+                    if (startBrace === -1) break;
+
+                    let braceCount = 1;
+                    let currentPos = startBrace + 1;
+                    let innerContent = "";
+
+                    while (braceCount > 0 && currentPos < remoteCssText.length) {
+                        let char = remoteCssText[currentPos];
+                        if (char === "{") {
+                            braceCount++;
+                        } else if (char === "}") {
+                            braceCount--;
+                        }
+
+                        if (braceCount > 0) {
+                            innerContent += char;
+                        }
+                        currentPos++;
+                    }
+
+                    if (innerContent) {
+                        extractedPrintStyles += innerContent.trim() + "\n";
+                    }
+
+                    index = currentPos;
+                }
+            }
+
+            const forcedPrintStyles = `
+                <style>
+                    html, body, #app, #root, [class*="container"], [class*="wrapper"], main, section {
+                        height: auto !important;
+                        max-height: none !important;
+                        overflow: visible !important;
+                        position: static !important;
+                        display: block !important;
+                        background: #fff !important;
+                    }
+                    ${remoteCssText}
+                    ${extractedPrintStyles}
+                </style>
+                `;
+
+            await exportHTMLContent(activeTabView.webContents, htmlContent + forcedPrintStyles, type);
+        }
+    } else {
         await dialog.showMessageBox(mainWindow, {
             type: 'warning',
             title: 'Export Failed',
@@ -765,13 +830,6 @@ function createContextMenu(isTray) {
                     label: 'PDF',
                     click: (menuItem) => {
                         triggerExport('pdf');
-                    }
-                },
-                {
-                    id: "m-exprot-doc",
-                    label: 'Doc',
-                    click: (menuItem) => {
-                        triggerExport('doc');
                     }
                 }
             ]
@@ -1061,6 +1119,13 @@ function prepareTemplateForRenderer(template) {
     });
 }
 
+async function autoSetTitleBar() {
+    await titleBarView.webContents.executeJavaScript(`document.querySelector('.window-title-bar').style.display 
+        = ${(getConfig('autoHideTitleBar') ?? false) ? '"none"' : '"flex"'};`);
+    autoHideMenuBar();
+    updateMenuBar();
+}
+
 function toggleTitleBar() {
     saveConfig('autoHideTitleBar', !getConfig('autoHideTitleBar'));
     autoSetTitleBar();
@@ -1116,6 +1181,13 @@ function isGeminiRealChatURL(tabView) {
     return geminiChatRegex.test(currentURL);
 }
 
+function isDeepSeekRealChatURL(tabView) {
+    const currentURL = tabView.webContents.getURL();
+    const dsChatRegex = /chat\.deepseek\.com\/a\/chat\/s\/([0-9a-fA-F]{16}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/;
+
+    return dsChatRegex.test(currentURL);
+}
+
 function isGoogleSearchAIModeRealChatURL(tabView) {
     const currentURL = tabView.webContents.getURL();
     const targetUrl = new URL(constants.AI_SUPPLIERS.G_SEACH_AI_MODE.landingPage);
@@ -1154,12 +1226,6 @@ function createNewTabInstance(id, url, sendMsg = false) {
         userAgent: APP_USER_AGENT
     });
 
-    // tabView.webContents.on('did-finish-load', async () => {
-    // });
-
-    // tabView.webContents.on('did-navigate-in-page', (event, url) => {
-    // });
-
     tabView.webContents.on('page-title-updated', async (e, title) => {
         if (title && title.trim() !== "") {
             titleBarView?.webContents.send('title-changed', { id, title: title.trim() });
@@ -1175,45 +1241,11 @@ function createNewTabInstance(id, url, sendMsg = false) {
         injectLocalStorage(tabView, 'Bard-Color-Theme', 'local-storage-set-bridge', 'local-storage-remove-bridge');
     });
 
-    // tabView.webContents.once('did-start-navigation', (event, targetUrl) => {
-    //     if (mainWindow.contentView.children.includes(titleBarView)) {
-    //         mainWindow.contentView.removeChildView(titleBarView);
-    //     }
-
-    //     mainWindow.contentView.addChildView(titleBarView);
-    //     titleBarView.webContents.openDevTools({ mode: 'detach' });
-    // });
-
-    // tabView.webContents.on('will-navigate', (e, navigateUrl) => {
-    //     titleBarView?.webContents.send('url-changed', { id, url: navigateUrl });
-    // });
-
     if (sendMsg) {
         titleBarView?.webContents.send('new-tab-created', { id, url });
     }
 
-    // tabView.webContents.on('did-start-navigation', (event, targetUrl) => {
-    //     console.log('did-start-navigation:', targetUrl);
-    // });
-
-    // tabView.webContents.on('did-navigate-in-page', (event, targetUrl) => {
-    //     console.log('did-navigate-in-page:', targetUrl);
-    // });
-
-    // tabView.webContents.session.on('will-download', (event, item, webContents) => {
-    //     console.log('will-download');
-    // });
-
-    // tabView.webContents.on('will-frame-navigate', (event) => {
-    //     const targetUrl = event.url;
-    //     console.log('will-frame-navigate', targetUrl);
-    // });
-
-    // const zoomFactor = titleBarView.webContents.getZoomFactor();
-    // if (currentZoomFactor !== zoomFactor) {
-    //     currentZoomFactor = zoomFactor;
-    //     updateMenus();
-    // }
+    currentZoomFactor = titleBarView.webContents.getZoomFactor();
 
     tabView.webContents.on('found-in-page', (event, result) => {
         if (searchWin && result.activeMatchOrdinal !== undefined) {
@@ -1221,6 +1253,36 @@ function createNewTabInstance(id, url, sendMsg = false) {
                 active: result.activeMatchOrdinal,
                 total: result.matches
             });
+        }
+    });
+
+    tabView.webContents.on('before-input-event', async (event, input) => {
+        if (input.type === 'keyDown') {
+            const isCmdOrCtrl = input.meta || input.control;
+            const key = input.key.toLowerCase();
+
+            if (isCmdOrCtrl && key === 'f') {
+                event.preventDefault();
+                createSearchWindow(tabView);
+            } else if (isCmdOrCtrl && key === '=') {
+                event.preventDefault();
+                zoomApp(0.1);
+            } else if (isCmdOrCtrl && key === '-') {
+                event.preventDefault();
+                zoomApp(-0.1);
+            } else if (isCmdOrCtrl && key === '0') {
+                event.preventDefault();
+                zoomApp(0);
+            } else if (isCmdOrCtrl && input.shift && key === 'm') {
+                event.preventDefault();
+                toggleTitleBar();
+            } else if (key === 'F11') {
+                event.preventDefault();
+                toggleFullscreen();
+            } else if (key === 'F5') {
+                event.preventDefault();
+                mainWindow.webContents.reload();
+            }
         }
     });
 
@@ -1523,10 +1585,6 @@ async function exportHTMLContent(sender, htmlContent, type) {
             case 'pdf':
                 content = await generatePdfFromEmbeddedHtml(await convertHtmlImagesToBase64(htmlContent, sender));
                 filters = { name: 'PDF Document (*.' + type + ')', extensions: [type] };
-                break;
-            case 'doc':
-                content = await convertHtmlImagesToBase64(htmlContent, sender);
-                filters = { name: 'Word 97-2003 Document (*.' + type + ')', extensions: [type] };
                 break;
         }
 
@@ -1917,10 +1975,6 @@ ipcMain.handle('get-config', (event, { key }) => {
     return getConfig(key);
 });
 
-// ipcMain.handle('get-constants', () => {
-//     return constants;
-// });
-
 ipcMain.handle('is-google-search-ai-mode-real-chat-url', () => {
     return isGoogleSearchAIModeRealChatURL(getActiveTabView());
 });
@@ -2024,14 +2078,6 @@ if (IS_WINDOWS) {
 
 app.whenReady().then(() => {
     createMainWindow();
-
-    // app.on('will-quit', () => {
-    //     console.log('will-quit');
-    // });
-
-    // app.on('window-all-closed', () => {
-    //     console.log('window-all-closed');
-    // });
 
     app.on('web-contents-created', (event, webContents) => {
         webContents.on('context-menu', (e, params) => {

@@ -164,17 +164,6 @@ window.electronAPI.onTitleChanged(({ id, title }) => {
     }
 });
 
-// window.electronAPI.onUrlChanged(({ id, url }) => {
-//     const matchedTab = tabQueue.find(tab => tab.id === id);
-//     if (matchedTab && url) {
-//         matchedTab.fullTitle = url;
-//         if (matchedTab.title === 'New Tab' || matchedTab.title === 'Web Page') {
-//             matchedTab.title = truncateTitle(getDomainFromUrl(url));
-//         }
-//         updateTabsUI();
-//     }
-// });
-
 window.electronAPI.onThemeChanged(async (themeName) => {
     await setThemeStyle(themeName);
 });
@@ -202,7 +191,6 @@ window.electronAPI.onSetTabBarBackground((base64Image) => {
     bodyStyle.setProperty('--bg-position', 'center 72px');
 
     bodyStyle.setProperty('--bg-blur', '3px');
-    // bodyStyle.setProperty('--bg-brightness', '0.8');
 
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {

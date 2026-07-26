@@ -2,7 +2,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getCurrentTheme: () => ipcRenderer.invoke('get-current-theme'),
-  // getConstants: () => ipcRenderer.invoke('get-constants'),
   getDefaultAISupplier: () => ipcRenderer.invoke('get-default-ai-supplier'),
   mouseEnterMenu: () => ipcRenderer.invoke('mouse-enter-menu'),
   mouseLeaveMenu: () => ipcRenderer.invoke('mouse-leave-menu'),
@@ -13,7 +12,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopSearch: () => ipcRenderer.invoke('stop-search'),
   closeSearchWindow: () => ipcRenderer.invoke('close-search-window'),
 
-  // toggleThemeFromUI: (data) => ipcRenderer.invoke('toggle-theme-from-ui', data),
   createTab: (data) => ipcRenderer.invoke('create-tab', data),
   switchTab: (data) => ipcRenderer.invoke('switch-tab', data),
   closeTab: (data) => ipcRenderer.invoke('close-tab', data),
@@ -27,7 +25,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   onNewTabCreated: (callback) => ipcRenderer.on('new-tab-created', (e, data) => callback(data)),
   onTitleChanged: (callback) => ipcRenderer.on('title-changed', (e, data) => callback(data)),
-  // onUrlChanged: (callback) => ipcRenderer.on('url-changed', (e, data) => callback(data)),
   onThemeChanged: (callback) => ipcRenderer.on('theme-changed', (e, data) => callback(data)),
   onSetTabBarBackground: (callback) => ipcRenderer.on('set-tab-bar-background', (e, data) => callback(data)),
   onUpdateMenus: (callback) => ipcRenderer.on('update-menus', (e, data) => callback(data)),
