@@ -18,7 +18,7 @@ const DEFAULT_MAIN_WINDOW_FRAME = getConfig('mainWindowFrame') ?? false;
 const DEFAULT_ZOOM_FACTOR = 1;
 const MIN_ZOOM_FACTOR = 0.5;
 const MAX_ZOOM_FACTOR = 2;
-const APP_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) G-AIDesktop/0.11.0 Chrome/150.0.0.0 Electron/39.8.10 Safari/537.36";
+const APP_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) G-AIDesktop/0.12.0 Chrome/150.0.0.0 Electron/39.8.10 Safari/537.36";
 const WORD_DOC_EXTS = ['doc', 'docx'];
 const EXCEL_DATA_SHEET_EXTS = ['csv']
 const PLAIN_TEXT_EXTS = ['html', 'htm', 'txt', 'md', 'rtf', 'java', 'py', 'cpp', 'js', 'css', 'cs', 'json', 'ts', 'tsx', 'jsx', 'go', 'rs', 'sh', 'bat', 'yaml', 'yml', 'xml', 'ini', 'toml', 'sql', 'kt', 'swift', 'php', 'tsv', 'log', 'vcf', 'ps1'];
@@ -31,12 +31,12 @@ const menuItemsRegistry = new Map();
 const configPath = path.join(app.getPath('userData'), 'user-config.json');
 const constants = Object.freeze({
     AI_SUPPLIERS: Object.freeze({
-        G_GEMINI: { id: 'google_gemini', landingPage: 'https://gemini.google.com/app', title: 'Google Gemini', label: 'Google Gemini' },
+        G_GEMINI: { id: 'google_gemini', landingPage: 'https://gemini.google.com/app', label: 'Google Gemini' },
         G_SEACH_AI_MODE: {
-            id: 'google_search_ai_node', landingPage: 'https://www.google.com/search?udm=50', title: 'Google Search', label: 'Google Search (AI Mode)'
+            id: 'google_search_ai_node', landingPage: 'https://www.google.com/search?udm=50', label: 'Google Search (AI Mode)'
         },
         DS_CHAT: {
-            id: 'deep_seek_chat', landingPage: 'https://chat.deepseek.com/', title: 'DeepSeek', label: 'DeepSeek'
+            id: 'deep_seek_chat', landingPage: 'https://chat.deepseek.com/', label: 'DeepSeek'
         },
     }),
 });
@@ -74,36 +74,66 @@ function isDefaultAISupplierSet() {
     return getConfig('defaultAISupplier') !== '';
 }
 
-function toggleApplicationTheme(theme, fromWeb = false) {
+async function toggleApplicationTheme(theme, fromWeb = false) {
     currentTheme = theme === 'system' ? (nativeTheme.shouldUseDarkColors ? 'dark' : 'light') : theme;
 
-    let jsCode = null;
     if (currentTheme === 'dark') {
-        jsCode = "document.body.classList.replace('light-theme', 'dark-theme');";
+        changeWindowBg('#131314');
     } else {
-        jsCode = "document.body.classList.replace('dark-theme', 'light-theme');";
+        changeWindowBg('#f0f4f9');
     }
 
     titleBarView?.webContents.send('theme-changed', currentTheme);
     searchWin?.webContents.send('theme-changed', currentTheme);
-    for (const [id, tabView] of tabsMap.entries()) {
-        tabView.webContents.send('theme-changed', currentTheme);
+    if (!fromWeb) {
+        for (const [id, tabView] of tabsMap.entries()) {
+            const bodyClassList = await tabView.webContents.executeJavaScript("Array.from(document.body.classList);")
 
-        if (!fromWeb) {
-            if (jsCode)
-                tabView.webContents.executeJavaScript(jsCode);
+            if (bodyClassList.includes('dark-theme') || bodyClassList.includes('light-theme')) {
+                tabView.webContents.executeJavaScript(currentTheme === 'dark'
+                    ? "document.body.classList.replace('light-theme', 'dark-theme');"
+                    : "document.body.classList.replace('dark-theme', 'light-theme');");
 
-            let colorTheme = null;
-            if (theme === 'dark') {
-                colorTheme = "Bard-Dark-Theme";
-            } else if (theme === 'light') {
-                colorTheme = "Bard-Light-Theme";
+                let colorTheme = null;
+                if (theme === 'dark') {
+                    colorTheme = "Bard-Dark-Theme";
+                } else if (theme === 'light') {
+                    colorTheme = "Bard-Light-Theme";
+                }
+
+                if (colorTheme)
+                    setLocalStorage(tabView, 'Bard-Color-Theme', colorTheme);
+                else
+                    removeLocalStorage(tabView, 'Bard-Color-Theme');
+            } else if (bodyClassList.includes('dark') || bodyClassList.includes('light')) {
+                const hasElements = await tabView.webContents.executeJavaScript(`!!(document.querySelector('.ds-modal-wrapper')?.querySelectorAll('div.ds-button--outlined[role="button"]'))`)
+                if (hasElements) {
+                    const jsCode = `(() => { 
+                        const elements = document.querySelector('.ds-modal-wrapper').querySelectorAll('div.ds-button--outlined[role="button"]');
+                        const themes = ['light', 'dark', 'system'];
+                        for (let i = 0; i < themes.length; i++) {
+                            if (themes[i] === '${theme}') {
+                                elements[i].click();
+                                break;
+                            }
+                        }
+                    })();`;
+
+                    tabView.webContents.executeJavaScript(jsCode);
+                } else {
+                    if (currentTheme === 'dark') {
+                        tabView.webContents.executeJavaScript("document.body.classList.replace('light', 'dark');")
+                        tabView.webContents.executeJavaScript("document.body.setAttribute('data-ds-dark-theme', 'dark');")
+                        tabView.webContents.executeJavaScript(`document.documentElement.setAttribute('data-immersive-translate-page-theme', 'dark');`)
+                    } else {
+                        tabView.webContents.executeJavaScript("document.body.classList.replace('dark', 'light');");
+                        tabView.webContents.executeJavaScript("document.body.removeAttribute('data-ds-dark-theme');")
+                        tabView.webContents.executeJavaScript(`document.documentElement.setAttribute('data-immersive-translate-page-theme', 'light');`)
+                    }
+
+                    setLocalStorage(tabView, '__appKit_@deepseek/chat_themePreference', `{\\\"value\\\":\\\"${theme}\\\",\\\"__version\\\":\\\"0\\\"}`);
+                }
             }
-
-            if (colorTheme)
-                setLocalStorage(tabView, 'Bard-Color-Theme', colorTheme);
-            else
-                removeLocalStorage(tabView, 'Bard-Color-Theme');
         }
     }
 
@@ -173,7 +203,7 @@ async function getLocalStorage(tabView, key) {
     }
 }
 
-function injectLocalStorage(tabView, key, setBridge, removeBridge) {
+function injectLocalStorage(tabView, keys) {
     const injectLocalStorageSpyJS = `
         (() => {
             if (window.__LOCALSTORAGE_SPY_ACTIVE__) return;
@@ -181,13 +211,14 @@ function injectLocalStorage(tabView, key, setBridge, removeBridge) {
 
             const originalSet = Storage.prototype.setItem;
             const originalRemove = Storage.prototype.removeItem;
+            const keys = ${JSON.stringify(keys)};
 
             Storage.prototype.setItem = function (key, value) {
                 originalSet.apply(this, arguments);
 
-                if (key === '${key}') {
+                if (keys.includes(key)) {
                     try {
-                         window.dispatchEvent(new CustomEvent('${setBridge}', { detail: value }));
+                         window.dispatchEvent(new CustomEvent('local-storage-set-bridge', { detail: {key, value} }));
                     } catch(e) {}
                 }
             };
@@ -195,9 +226,9 @@ function injectLocalStorage(tabView, key, setBridge, removeBridge) {
             Storage.prototype.removeItem = function (key) {
                 originalRemove.apply(this, arguments);
 
-                if (key === '${key}') {
+                if (keys.includes(key)) {
                     try {
-                        window.dispatchEvent(new CustomEvent('${removeBridge}'));
+                        window.dispatchEvent(new CustomEvent('local-storage-remove-bridge'));
                     } catch(e) {}
                 }
             };
@@ -1238,7 +1269,7 @@ function createNewTabInstance(id, url, sendMsg = false) {
     });
 
     tabView.webContents.on('dom-ready', () => {
-        injectLocalStorage(tabView, 'Bard-Color-Theme', 'local-storage-set-bridge', 'local-storage-remove-bridge');
+        injectLocalStorage(tabView, ['Bard-Color-Theme', '__appKit_@deepseek/chat_themePreference']);
     });
 
     if (sendMsg) {
@@ -1678,11 +1709,13 @@ function isValidURL(str) {
     return !!pattern.test(str);
 }
 
-ipcMain.handle('change-window-bg', (event, { color }) => {
+function changeWindowBg(color) {
     if (mainWindow) {
         mainWindow.setBackgroundColor(color);
     }
-});
+}
+
+
 
 ipcMain.handle('upload-files', async (event, acceptString) => {
     try {
@@ -1967,11 +2000,7 @@ ipcMain.handle('toggle-theme-from-ui', (theme) => {
     toggleApplicationTheme(theme);
 });
 
-ipcMain.handle('save-config', (event, { key, value }) => {
-    saveConfig(key, value);
-});
-
-ipcMain.handle('get-config', (event, { key }) => {
+ipcMain.handle('get-config', (event, key) => {
     return getConfig(key);
 });
 

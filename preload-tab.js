@@ -1,6 +1,8 @@
 const { ipcRenderer } = require('electron');
 
-function waitForElement(selector, suggestedSelector, buttonSelector) {
+let themeSelectorBtnsObserver = null;
+
+function waitForUploadFileAddBtns(selector, suggestedSelector, buttonSelector) {
     return new Promise((resolve) => {
         let elements = document.querySelectorAll(selector);
         if (elements.length === 0) {
@@ -50,7 +52,7 @@ function initUploadFileInput() {
     const selector = 'div[data-scope-id="turn"]';
     const buttonSelector = 'button:has(path[d="M440-440H200v-80H440V-760h80v240H760v80H520v240H440V-440Z"])';
 
-    waitForElement(selector, suggestedSelector, buttonSelector).then((addBtns) => {
+    waitForUploadFileAddBtns(selector, suggestedSelector, buttonSelector).then((addBtns) => {
         addBtns.forEach(addBtn => {
             addBtn.addEventListener('click', () => {
                 setTimeout(() => {
@@ -82,10 +84,45 @@ function initUploadFileInput() {
     });
 }
 
-window.addEventListener('local-storage-set-bridge', async (event) => {
-    const latestValue = event.detail;
+function initThemeSelector() {
+    const selector = '.ds-modal-wrapper';
+    const buttonSelector = `div.ds-button--outlined[role='button']`;
 
-    await ipcRenderer.invoke('web-theme-changed', latestValue === "Bard-Dark-Theme" ? 'dark' : 'light');
+    themeSelectorBtnsObserver = new MutationObserver(async (mutations, obs) => {
+        let element = document.querySelector(selector);
+        if (element) {
+            const elements = document.querySelectorAll(buttonSelector);
+            obs.disconnect();
+
+            const currentTheme = await ipcRenderer.invoke('get-config', 'theme');
+            const themes = ['light', 'dark', 'system'];
+            for (let i = 0; i < themes.length; i++) {
+                console.log(themes[i], currentTheme)
+                if (themes[i] === currentTheme) {
+                    elements[i].click();
+                    break;
+                }
+            }
+        };
+    });
+
+    themeSelectorBtnsObserver.observe(document.body, { childList: true, subtree: true });
+}
+
+window.addEventListener('local-storage-set-bridge', async (event) => {
+    const key = event.detail.key;
+    const value = event.detail.value;
+    console.log(key, value)
+    switch (key) {
+        case 'Bard-Color-Theme':
+            await ipcRenderer.invoke('web-theme-changed', value === "Bard-Dark-Theme" ? 'dark' : 'light');
+            break;
+        case '__appKit_@deepseek/chat_themePreference':
+            await ipcRenderer.invoke('web-theme-changed', value.includes('system') ? null : (value.includes('dark') ? 'dark' : 'light'));
+            initThemeSelector();
+            break;
+    }
+
 });
 
 window.addEventListener('local-storage-remove-bridge', async () => {
@@ -107,9 +144,10 @@ window.addEventListener('DOMContentLoaded', async () => {
         Object.defineProperty(window, 'parent', { get: () => window });
         window.open = (url) => { window.location.href = url; return window; };
 
-        const isGoogleSeachAIModeRealChatURL = await ipcRenderer.invoke('is-google-search-ai-mode-real-chat-url');
-        if (isGoogleSeachAIModeRealChatURL) {
+        if (await ipcRenderer.invoke('is-google-search-ai-mode-real-chat-url')) {
             initUploadFileInput();
+        } else if (window.location.href.toLowerCase().includes('deepseek.com')) {
+            initThemeSelector();
         }
     } catch (e) { }
 });

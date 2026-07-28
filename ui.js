@@ -93,10 +93,8 @@ async function switchTab(tabId) {
 async function setThemeStyle(themeName) {
     if (themeName === 'dark') {
         document.documentElement.setAttribute('data-theme', 'dark');
-        await window.electronAPI.changeWindowBg({ color: '#131314' });
     } else {
         document.documentElement.removeAttribute('data-theme');
-        await window.electronAPI.changeWindowBg({ color: '#f0f4f9' });
     }
     updateTabsUI();
 }
