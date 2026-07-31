@@ -24,7 +24,7 @@ G-AI Desktop is a lightweight, modern, and feature-rich Electron-based desktop c
 *   **⌨️ Native Shortcuts & Tray Integration**:
     *   `CmdOrCtrl + F`: Toggle the In-Page Text Find search bar.
     *   `CmdOrCtrl + Shift + Space`: Globally toggle (Show/Hide) the application window.
-    *   `CmdOrCtrl + = / - / 0`: Flexibly zoom in, zoom out, or reset the interface scaling.
+    *   `CmdOrCtrl + = / - / 0` or `CmdOrCtrl + Mouse Wheel / Middle Click`: Flexibly zoom in, zoom out, or reset the interface scaling.
     *   `CmdOrCtrl + Shift + M`: Easily show or hide the application title bar/menu bar.
     *   `F11`: Toggle fullscreen mode.
     *   `Esc`: Close the active search bar.

@@ -151,3 +151,25 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
     } catch (e) { }
 });
+
+window.addEventListener('wheel', async (event) => {
+    if (event.ctrlKey || event.metaKey) {
+        if (event.deltaY < 0) {
+            event.preventDefault();
+            await ipcRenderer.invoke('zoom-app', 0.1);
+        } else {
+            event.preventDefault();
+            await ipcRenderer.invoke('zoom-app', -0.1);
+        }
+    }
+});
+
+window.addEventListener('mousedown', async (event) => {
+    const isCtrlClick = event.ctrlKey || event.metaKey;
+    const isMiddleButton = event.button === 1;
+
+    if (isCtrlClick && isMiddleButton) {
+        event.preventDefault();
+        await ipcRenderer.invoke('zoom-app', 0);
+    }
+});
