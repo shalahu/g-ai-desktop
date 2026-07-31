@@ -72,17 +72,19 @@ npm run build
 
 ![G-AI Desktop multiple-files.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/multiple-files.jpg)
 
-![G-AI Desktop light.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/light.jpg)
-
-![G-AI Desktop dark.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/dark.jpg)
-
 ![G-AI Desktop file.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/file.jpg)
 
 ![G-AI Desktop view.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/view.jpg)
 
 ![G-AI Desktop settings.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/settings.jpg)
 
+![G-AI Desktop help.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/help.jpg)
+
 ![G-AI Desktop context-menu.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/context-menu.jpg)
+
+![G-AI Desktop light.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/light.jpg)
+
+![G-AI Desktop dark.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/dark.jpg)
 
 ## ❤️ Acknowledgements & Disclaimer
 

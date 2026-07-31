@@ -97,7 +97,6 @@ function initThemeSelector() {
             const currentTheme = await ipcRenderer.invoke('get-config', 'theme');
             const themes = ['light', 'dark', 'system'];
             for (let i = 0; i < themes.length; i++) {
-                console.log(themes[i], currentTheme)
                 if (themes[i] === currentTheme) {
                     elements[i].click();
                     break;
@@ -112,7 +111,6 @@ function initThemeSelector() {
 window.addEventListener('local-storage-set-bridge', async (event) => {
     const key = event.detail.key;
     const value = event.detail.value;
-    console.log(key, value)
     switch (key) {
         case 'Bard-Color-Theme':
             await ipcRenderer.invoke('web-theme-changed', value === "Bard-Dark-Theme" ? 'dark' : 'light');

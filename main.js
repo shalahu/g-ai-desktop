@@ -1,11 +1,11 @@
 const { app, BaseWindow, WebContentsView, ipcMain, nativeTheme, Tray, Menu, globalShortcut, nativeImage, BrowserWindow, dialog, net, Notification, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const type = require('os');
 const { PDFDocument } = require('pdf-lib');
 const mammoth = require('mammoth');
 const csvtojson = require('csvtojson');
 const console = require('console');
+const semver = require('semver');
 
 const APP_NAME = "G-AI Desktop";
 const SIDE_PADDING = 0;
@@ -18,13 +18,14 @@ const DEFAULT_MAIN_WINDOW_FRAME = getConfig('mainWindowFrame') ?? false;
 const DEFAULT_ZOOM_FACTOR = 1;
 const MIN_ZOOM_FACTOR = 0.5;
 const MAX_ZOOM_FACTOR = 2;
-const APP_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) G-AIDesktop/0.13.0 Chrome/150.0.0.0 Electron/39.8.10 Safari/537.36";
+const APP_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) G-AIDesktop/" + app.getVersion() + " Chrome/150.0.0.0 Electron/39.8.10 Safari/537.36";
 const WORD_DOC_EXTS = ['doc', 'docx'];
 const EXCEL_DATA_SHEET_EXTS = ['csv']
 const PLAIN_TEXT_EXTS = ['html', 'htm', 'txt', 'md', 'rtf', 'java', 'py', 'cpp', 'js', 'css', 'cs', 'json', 'ts', 'tsx', 'jsx', 'go', 'rs', 'sh', 'bat', 'yaml', 'yml', 'xml', 'ini', 'toml', 'sql', 'kt', 'swift', 'php', 'tsv', 'log', 'vcf', 'ps1'];
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif', 'heic', 'heif'];
 const CONVERTIBLE_TO_PDF_EXTS = [...WORD_DOC_EXTS, ...EXCEL_DATA_SHEET_EXTS, ...PLAIN_TEXT_EXTS, ...IMAGE_EXTS];
-const appId = 'com.g-ai.desktop';
+const APP_ID = 'com.g-ai.desktop';
+const APP_WEBSITE = 'https://github.com/shalahu/g-ai-desktop/';
 
 const tabsMap = new Map();
 const menuItemsRegistry = new Map();
@@ -333,7 +334,7 @@ function createMainWindow() {
     });
 
     mainWindow.contentView.addChildView(titleBarView);
-    titleBarView.webContents.loadFile('index.html');
+    titleBarView.webContents.loadFile(path.join(__dirname, 'index.html'));
 
     currentTheme = getConfig('theme') === 'system' ? (nativeTheme.shouldUseDarkColors ? 'dark' : 'light') : getConfig('theme');
 
@@ -674,7 +675,7 @@ async function triggerExport(type) {
             const chatData = { title: document.title || "AI CHAT LOG", url: document.location.href, dialogues: turns }; 
             
             return chatData;
-            } catch (e) {console.error(e);} })();`;
+            } catch (e) {} })();`;
 
             const chatData = await activeTabView.webContents.executeJavaScript(jsCode);
 
@@ -1086,10 +1087,120 @@ function createContextMenu(isTray) {
         };
         menuTemplate.push(settingsItem);
 
+        const helpItem = {
+            id: "help-menu",
+            label: 'Help',
+            submenu: [
+                {
+                    id: "m-help-report-issue",
+                    label: "Report Issue",
+                    click: (menuItem) => {
+                        createNewTabBackend(getAppWebsiteFullURL('issues'));
+                    }
+                },
+                separatorItem,
+                {
+                    id: "m-help-view-license",
+                    label: "View License",
+                    click: (menuItem) => {
+                        createNewTabBackend(getAppWebsiteFullURL(`?tab=MIT-1-ov-file#MIT-1-ov-file`));
+                    }
+                },
+                {
+                    id: "m-help-disclaimer-statement",
+                    label: "Disclaimer Statement",
+                    click: (menuItem) => {
+                        createNewTabBackend(getAppWebsiteFullURL(`?tab=readme-ov-file#%EF%B8%8F-disclaimer`));
+                    }
+                },
+                separatorItem,
+                {
+                    id: "m-help-check-for-updates",
+                    label: "Check for Updates...",
+                    click: async (menuItem) => {
+                        await checkForUpdates();
+                    }
+                },
+                separatorItem,
+                {
+                    id: "m-help-about",
+                    label: "About (V" + app.getVersion() + ')',
+                    click: (menuItem) => {
+                        createNewTabBackend(getAppWebsiteFullURL(''));
+                    }
+                }
+            ]
+        };
+        menuTemplate.push(helpItem);
+
         barMenusTemplate = menuTemplate;
     }
 
     return Menu.buildFromTemplate(menuTemplate);
+}
+
+async function checkForUpdates() {
+    const currentVersion = semver.coerce(app.getVersion());
+
+    const tagsUrl = 'https://api.github.com/repos/shalahu/g-ai-desktop/tags';
+    const downloadUrl = getAppWebsiteFullURL('releases/latest');
+
+    try {
+        const response = await net.fetch(tagsUrl, {
+            headers: { 'Accept': 'application/vnd.github+json' }
+        });
+
+        if (!response.ok) throw new Error('Server responded with status ' + response.status);
+
+        const tagsData = await response.json();
+        let latestVersion = null;
+
+        if (tagsData && tagsData.length > 0) {
+            latestVersion = semver.coerce(tagsData[0].name);
+        } else {
+            latestVersion = currentVersion;
+        }
+
+        if (semver.gt(latestVersion, currentVersion)) {
+            const updateChoice = await dialog.showMessageBox(mainWindow, {
+                type: 'info',
+                buttons: ['Download Now', 'Later'],
+                defaultId: 0,
+                cancelId: 1,
+                title: 'Update Available',
+                message: 'A new version of ' + APP_NAME + ' (V' + latestVersion.version + ') is available.',
+                detail: 'New features and bug fixes are available in this version.\n\nWould you like to open the download page now?'
+            });
+
+            if (updateChoice.response === 0) {
+                createNewTabBackend(downloadUrl);
+            }
+        } else {
+            await dialog.showMessageBox(mainWindow, {
+                type: 'info',
+                buttons: ['OK'],
+                defaultId: 0,
+                cancelId: 0,
+                title: 'Check for Updates',
+                message: 'You are up to date.',
+                detail: APP_NAME + ' V' + currentVersion.version + ' is currently the newest version available.'
+            });
+        }
+    } catch (error) {
+        await dialog.showMessageBox(mainWindow, {
+            type: 'error',
+            buttons: ['OK'],
+            defaultId: 0,
+            cancelId: 0,
+            title: 'Update Error',
+            message: 'Failed to check for updates.',
+            detail: 'Please check your internet connection or proxy settings and try again.' + error
+        });
+    }
+}
+
+function getAppWebsiteFullURL(subPath) {
+    return new URL(subPath, APP_WEBSITE).href;
 }
 
 function updateMenuBar() {
@@ -1292,17 +1403,37 @@ function createNewTabInstance(id, url, sendMsg = false) {
             const isCmdOrCtrl = input.meta || input.control;
             const key = input.key.toLowerCase();
 
-            if (isCmdOrCtrl && key === 'f') {
-                event.preventDefault();
-                createSearchWindow(tabView);
+            if (isCmdOrCtrl) {
+                if (key === 'f') {
+                    event.preventDefault();
+                    createSearchWindow(tabView);
+                } else if (key === 'r') {
+                    event.preventDefault();
+                    reloadTabView(tabView.webContents);
+                }
+            } else if (input.alt) {
+                if (key === 'arrowleft') {
+                    event.preventDefault();
+                    tabView.webContents.navigationHistory.goBack();
+                } else if (key === 'arrowright') {
+                    event.preventDefault();
+                    tabView.webContents.navigationHistory.goForward();
+                }
             } else if (key === 'f5') {
                 event.preventDefault();
-                getActiveTabView()?.webContents.reload();
+                reloadTabView(getActiveTabView()?.webContents);
+            } else if (key === 'f12') {
+                event.preventDefault();
+                getActiveTabView()?.webContents.openDevTools({ mode: 'detach' });
             }
         }
     });
 
     toggleApplicationTheme(getConfig('theme') ?? 'system');
+}
+
+function reloadTabView(webContents) {
+    webContents?.reload();
 }
 
 function readConfig() {
@@ -1483,9 +1614,7 @@ function generatePdfFromEmbeddedHtml(embeddedHtmlContent) {
                 });
 
                 resolve(pdfBuffer);
-
             } catch (err) {
-                console.error(err);
                 reject(err);
             } finally {
                 if (workerWindow) {
@@ -1620,7 +1749,7 @@ async function exportHTMLContent(sender, htmlContent, type) {
                 title: 'Export Success',
                 body: 'Your file is ready.',
                 silent: false,
-                icon: 'assets/icon.png'
+                icon: path.join(__dirname, 'assets/icon.png')
             })
 
             notice.show()
@@ -1652,7 +1781,7 @@ function createSearchWindow(tabView) {
         }
     });
 
-    searchWin.loadFile('search.html');
+    searchWin.loadFile(path.join(__dirname, 'search.html'));
 
     searchWin.on('closed', () => {
         searchWin = null;
@@ -1924,9 +2053,7 @@ ipcMain.handle('upload-files', async (event, acceptString) => {
             return [finalPdfPath];
         }
     }
-    catch (e) {
-        console.error(e);
-    }
+    catch (e) { }
 });
 
 ipcMain.handle('get-file-data', async (event, filePath) => {
@@ -2091,7 +2218,7 @@ if (proxyServer) {
 } else { }
 
 if (IS_WINDOWS) {
-    app.setAppUserModelId(appId);
+    app.setAppUserModelId(APP_ID);
 }
 
 app.whenReady().then(() => {
@@ -2101,6 +2228,8 @@ app.whenReady().then(() => {
         webContents.on('context-menu', (e, params) => {
             const clipboardText = clipboard.readText().trim();
             let validURL = false;
+            const hasSelection = params.selectionText.trim().length > 0;
+            const isEditable = params.isEditable;
 
             if (clipboardText) {
                 const truncatedText = clipboardText.length > 30
@@ -2117,12 +2246,13 @@ app.whenReady().then(() => {
             }
 
             const defaultMenuTemplate = [
-                { label: 'Undo', role: 'undo' },
-                { label: 'Redo', role: 'redo' },
+                { label: 'Back', accelerator: 'Alt+Left', visible: webContents.navigationHistory.canGoBack(), click: () => webContents.navigationHistory.goBack() },
+                { label: 'Forward', accelerator: 'Alt+Right', visible: webContents.navigationHistory.canGoForward(), click: () => webContents.navigationHistory.goForward() },
+                { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => reloadTabView(webContents) },
                 { type: 'separator' },
-                { label: 'Cut', role: 'cut' },
-                { label: 'Copy', role: 'copy' },
-                { label: 'Paste', role: 'paste' },
+                { label: 'Cut', enabled: hasSelection && isEditable, role: 'cut' },
+                { label: 'Copy', enabled: hasSelection, role: 'copy' },
+                { label: 'Paste', enabled: isEditable && !!clipboardText, role: 'paste' },
                 { type: 'separator' },
                 { label: 'Select All', role: 'selectall' },
                 { type: 'separator' },
