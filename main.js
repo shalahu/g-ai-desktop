@@ -250,12 +250,18 @@ function handleTrayClick() {
         showApp();
     }
 
+    if (isSearchWidowVisible()) {
+        searchWin.hide();
+    } else {
+        searchWin?.show();
+    }
+
     updateMenus(true);
 }
 
 function updateMenus(updateTrayMenus = false, updateAppMenus = true) {
     if (updateTrayMenus) {
-        tray.setContextMenu(createContextMenu(true));
+        tray?.setContextMenu(createContextMenu(true));
     }
     if (updateAppMenus) {
         Menu.setApplicationMenu(createContextMenu(false));
@@ -263,8 +269,13 @@ function updateMenus(updateTrayMenus = false, updateAppMenus = true) {
     updateMenuBar();
 }
 
+function isSearchWidowVisible() {
+    if (!searchWin || searchWin.isDestroyed()) return false;
+    return searchWin.isVisible();
+}
+
 function isMainWidowVisible() {
-    if (!mainWindow) return false;
+    if (!mainWindow || mainWindow.isDestroyed()) return false;
     return mainWindow.isVisible();
 }
 
@@ -1280,7 +1291,9 @@ async function quitApp(fromExit = false) {
         }
 
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
-        updateMenus();
+        if (searchWin && !searchWin.isDestroyed()) searchWin.hide();
+
+        updateMenus(true);
     }
     else if (!getConfig("exitDontAskAgain")) {
         const choice = await dialog.showMessageBox(mainWindow, {
@@ -1812,15 +1825,19 @@ function getProxyFromArgv() {
 }
 
 function isValidURL(str) {
-    const pattern = new RegExp(
-        '^(https?:\\/\\/)?' +
-        '((([a-z\\d]([a-z\\d-]*[a-z\\d])*)\\.)+[a-z]{2,}|' +
-        '((\\d{1,3}\\.){3}\\d{1,3}))' +
-        '(\\:\\d+)?(\\/[-a-z\\d%_.~+]*)*' +
-        '(\\?[;&a-z\\d%_.~+=-]*)?' +
-        '(\\#[-a-z\\d_]*)?$', 'i'
-    );
-    return !!pattern.test(str);
+    let stringToTest = str.trim();
+
+    if (!/^https?:\/\//i.test(stringToTest)) {
+        stringToTest = 'https://' + stringToTest;
+    }
+
+    try {
+        const url = new URL(stringToTest);
+
+        return url.hostname.includes('.') || url.hostname === 'localhost';
+    } catch (_) {
+        return false;
+    }
 }
 
 function changeWindowBg(color) {
@@ -1828,8 +1845,6 @@ function changeWindowBg(color) {
         mainWindow.setBackgroundColor(color);
     }
 }
-
-
 
 ipcMain.handle('upload-files', async (event, acceptString) => {
     try {
