@@ -6,6 +6,12 @@ G-AI Desktop is a lightweight, modern, and feature-rich Electron-based desktop c
 
 ## ✨ Features
 
+*   **⚡ Quick Launcher (Feature Highlight)**:
+    *   **Instant Access**: Summon a minimal, Spotlight-like quick prompt bar from anywhere across your operating system using a global hotkey.
+    *   **Direct AI Querying**: Type your question or prompt directly into the launcher and hit Enter to instantly dispatch it to **Google Gemini**, **Google Search (AI Mode)** or **DeepSeek**.
+*   **⚙️ Customizable On-Startup Behavior (Feature Highlight)**:
+    *   **Silent / Minimized Start**: Configure the app to start hidden in the system tray upon boot, keeping your desktop clean while keeping AI access one shortcut away.
+    *   **Default Landing Choice**: Choose whether the app launches into **Google Gemini**, **Google Search (AI Mode)** or **DeepSeek** by default.
 *   **🌐 Command-Line Proxy Support (Feature Highlight)**: Launch the app with custom proxy settings using the `--proxy=` flag, supporting HTTP, HTTPS, and SOCKS5 protocols (e.g., `--proxy="http://127.0.0.1:8888"` or `--proxy="socks5://127.0.0.1:1080"`)
 *   **💡 Full Google Search (AI Mode) Support**: Built-in support for **Google Search (AI Mode)** alongside **Google Gemini** and **DeepSeek**. Easily set it as your default landing page or switch between suppliers.  
 *   **🔎 Native Web Page Search (Feature Highlight)**:
@@ -24,10 +30,11 @@ G-AI Desktop is a lightweight, modern, and feature-rich Electron-based desktop c
 *   **⌨️ Native Shortcuts & Tray Integration**:
     *   `CmdOrCtrl + F`: Toggle the In-Page Text Find search bar.
     *   `CmdOrCtrl + Shift + Space`: Globally toggle (Show/Hide) the application window.
+    *   `CmdOrCtrl + Shift + Alt + Space`:Globally toggle Open Quick Launcher with supplier page rotation.
     *   `CmdOrCtrl + = / - / 0` or `CmdOrCtrl + Mouse Wheel / Middle Click`: Flexibly zoom in, zoom out, or reset the interface scaling.
     *   `CmdOrCtrl + Shift + M`: Easily show or hide the application title bar/menu bar.
     *   `F11`: Toggle fullscreen mode.
-    *   `Esc`: Close the active search bar.
+    *   `Esc`: Close the active search bar or Quick Launcher window.
     *   **System Tray Companion**: Stays running in the background with customizable "Minimize to Tray on Close" behavior to avoid accidental loss of workspace.
 
 ---
@@ -66,6 +73,12 @@ npm run build
 ```
 
 ### Preview
+![G-AI Desktop gm_ql.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/gm_ql.jpg)
+
+![G-AI Desktop gs_ql.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/gs_ql.jpg)
+
+![G-AI Desktop ds_ql.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/ds_ql.jpg)
+
 ![G-AI Desktop search.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/search.jpg)
 
 ![G-AI Desktop export-g-ai.jpg](https://raw.githubusercontent.com/shalahu/g-ai-desktop/refs/heads/main/assets/export-g-ai.jpg)
