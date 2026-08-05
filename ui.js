@@ -9,11 +9,12 @@ let isMenuActivated = false;
 function getDomainFromUrl(urlStr) {
     try {
         const parsed = new URL(urlStr);
-        let host = parsed.hostname.replace('www.', '');
-        return host.charAt(0).toUpperCase() + host.slice(1);
-    } catch (e) {
-        return 'Web Page';
-    }
+        const host = parsed.hostname.replace('www.', '');
+        const url = host.charAt(0).toUpperCase() + host.slice(1);
+        if (url !== '') return url;
+    } catch (e) { }
+
+    return 'New Chat';
 }
 
 async function createNewTab(url) {
@@ -50,9 +51,9 @@ function updateTabsUI() {
         closeBtn.className = 'tab-close-btn';
         closeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"> <path d="M0,0 L10,10 M10,0 L0,10" stroke="currentColor" stroke-width="1" /> </svg>';
         closeBtn.title = "Close Tab";
-        closeBtn.onclick = (e) => {
+        closeBtn.onclick = async (e) => {
             e.stopPropagation();
-            closeTab(tab);
+            await closeTab(tab);
         };
 
         tabContainer.appendChild(titleBtn);
@@ -64,6 +65,10 @@ function updateTabsUI() {
 async function closeTab(targetTab) {
     if (!targetTab) return;
     const tabIdToClose = targetTab.id;
+    await closeTabById(tabIdToClose);
+}
+
+async function closeTabById(tabIdToClose) {
     const currentIndex = tabQueue.findIndex(t => t.id === tabIdToClose);
     if (currentIndex === -1) return;
 
@@ -180,6 +185,10 @@ window.electronAPI.onNewTabCreated(async ({ id, url }) => {
     await switchTab(id);
 });
 
+window.electronAPI.onOldTabClosed(async (id) => {
+    await closeTabById(id);
+});
+
 window.electronAPI.onSetTabBarBackground((base64Image) => {
     const bodyStyle = document.body.style;
 
@@ -198,7 +207,7 @@ window.electronAPI.onSetTabBarBackground((base64Image) => {
 });
 
 window.electronAPI.onUpdateMenus(async ({ jsonReadyData, hideTitleBar, addTabJsonReadyData }) => {
-    const defaultAISupplier = await window.electronAPI.getDefaultAISupplier();
+    const defaultAISupplier = await window.electronAPI.getDefaultAISupplier(true);
 
     const wrapper = document.getElementById('dynamic-menus-wrapper');
     if (!wrapper) return;
@@ -319,7 +328,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await setThemeStyle(currentTheme);
 
     setTimeout(async () => {
-        const landingUrl = (await window.electronAPI.getDefaultAISupplier()).landingPage;
+        const landingUrl = (await window.electronAPI.getDefaultAISupplier(false)).landingPage;
         createNewTab(landingUrl);
     }, 150);
 

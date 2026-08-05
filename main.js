@@ -1,4 +1,4 @@
-const { app, BaseWindow, WebContentsView, ipcMain, nativeTheme, Tray, Menu, globalShortcut, nativeImage, BrowserWindow, dialog, net, Notification, clipboard } = require('electron');
+const { app, BaseWindow, WebContentsView, ipcMain, nativeTheme, Tray, Menu, globalShortcut, nativeImage, BrowserWindow, dialog, net, Notification, clipboard, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { PDFDocument } = require('pdf-lib');
@@ -26,6 +26,7 @@ const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif', 'heic', 
 const CONVERTIBLE_TO_PDF_EXTS = [...WORD_DOC_EXTS, ...EXCEL_DATA_SHEET_EXTS, ...PLAIN_TEXT_EXTS, ...IMAGE_EXTS];
 const APP_ID = 'com.g-ai.desktop';
 const APP_WEBSITE = 'https://github.com/shalahu/g-ai-desktop/';
+const ICON_PATH = path.join(__dirname, 'assets/icon.png');
 
 const tabsMap = new Map();
 const menuItemsRegistry = new Map();
@@ -34,7 +35,7 @@ const constants = Object.freeze({
     AI_SUPPLIERS: Object.freeze({
         G_GEMINI: { id: 'google_gemini', landingPage: 'https://gemini.google.com/app', label: 'Google Gemini' },
         G_SEACH_AI_MODE: {
-            id: 'google_search_ai_node', landingPage: 'https://www.google.com/search?udm=50', label: 'Google Search (AI Mode)'
+            id: 'google_search_ai_node', landingPage: 'https://www.google.com/search?atvm=2&udm=50', label: 'Google Search (AI Mode)'
         },
         DS_CHAT: {
             id: 'deep_seek_chat', landingPage: 'https://chat.deepseek.com/', label: 'DeepSeek'
@@ -46,14 +47,23 @@ const proxyServer = getProxyFromArgv();
 let appHeaderHeight = DEFAULT_APP_HEADER_HEIGHT;
 let baseAppHeaderHeight = DEFAULT_APP_HEADER_HEIGHT;
 let barMenusTemplate = [];
-let mainWindow;
-let titleBarView;
+let mainWindow = null;
+let titleBarView = null;
 let tray = null;
 let currentTheme = 'dark';
 let lastClickTime = 0;
 let currentZoomFactor = DEFAULT_ZOOM_FACTOR;
 let addTabItems = [];
 let searchWin = null;
+let quickLauncherWindow = null;
+let quickLauncherView = null;
+let hasGoogleSeachAIModeDomCheckURL = false;
+let ignored1stGoogleSeachAIModeDomCheckURL = false;
+let animationTimer = null;
+let currentStep = 0;
+let baseImage = null;
+let cachedFrames = [];
+let trayPopUpContextMenu = false;
 
 function getDefaultAISupplier() {
     const currentDefaultId = getConfig('defaultAISupplier') ?? constants.AI_SUPPLIERS.G_GEMINI.id;
@@ -76,7 +86,12 @@ function isDefaultAISupplierSet() {
 }
 
 async function toggleApplicationTheme(theme, fromWeb = false) {
-    currentTheme = theme === 'system' ? (nativeTheme.shouldUseDarkColors ? 'dark' : 'light') : theme;
+    if (getConfig('theme') === theme && fromWeb) {
+        return;
+    }
+
+    const targetTheme = theme === 'system' ? (nativeTheme.shouldUseDarkColors ? 'dark' : 'light') : theme;
+    currentTheme = targetTheme;
 
     if (currentTheme === 'dark') {
         changeWindowBg('#131314');
@@ -86,30 +101,45 @@ async function toggleApplicationTheme(theme, fromWeb = false) {
 
     titleBarView?.webContents.send('theme-changed', currentTheme);
     searchWin?.webContents.send('theme-changed', currentTheme);
-    if (!fromWeb) {
-        for (const [id, tabView] of tabsMap.entries()) {
-            const bodyClassList = await tabView.webContents.executeJavaScript("Array.from(document.body.classList);")
+    await changeViewTheme(quickLauncherView, theme);
 
-            if (bodyClassList.includes('dark-theme') || bodyClassList.includes('light-theme')) {
-                tabView.webContents.executeJavaScript(currentTheme === 'dark'
-                    ? "document.body.classList.replace('light-theme', 'dark-theme');"
-                    : "document.body.classList.replace('dark-theme', 'light-theme');");
+    for (const [id, tabView] of tabsMap.entries()) {
+        if (!fromWeb || !tabView.isVisible) {
+            await changeViewTheme(tabView, theme);
+        }
+    }
 
-                let colorTheme = null;
-                if (theme === 'dark') {
-                    colorTheme = "Bard-Dark-Theme";
-                } else if (theme === 'light') {
-                    colorTheme = "Bard-Light-Theme";
-                }
+    saveConfig('theme', theme);
 
-                if (colorTheme)
-                    setLocalStorage(tabView, 'Bard-Color-Theme', colorTheme);
-                else
-                    removeLocalStorage(tabView, 'Bard-Color-Theme');
-            } else if (bodyClassList.includes('dark') || bodyClassList.includes('light')) {
-                const hasElements = await tabView.webContents.executeJavaScript(`!!(document.querySelector('.ds-modal-wrapper')?.querySelectorAll('div.ds-button--outlined[role="button"]'))`)
-                if (hasElements) {
-                    const jsCode = `(() => { 
+    updateMenus();
+}
+
+async function changeViewTheme(tabView, theme) {
+    if (!tabView) return;
+
+    const bodyClassList = await tabView.webContents.executeJavaScript("Array.from(document.body.classList);");
+
+    if (bodyClassList.includes('dark-theme') || bodyClassList.includes('light-theme')) {
+        tabView.webContents.executeJavaScript(currentTheme === 'dark'
+            ? "document.body.classList.replace('light-theme', 'dark-theme');"
+            : "document.body.classList.replace('dark-theme', 'light-theme');");
+
+        let colorTheme = null;
+        if (theme === 'dark') {
+            colorTheme = "Bard-Dark-Theme";
+        } else if (theme === 'light') {
+            colorTheme = "Bard-Light-Theme";
+        }
+
+        if (colorTheme) {
+            setLocalStorage(tabView, 'Bard-Color-Theme', colorTheme);
+        } else {
+            removeLocalStorage(tabView, 'Bard-Color-Theme');
+        }
+    } else if (bodyClassList.includes('dark') || bodyClassList.includes('light')) {
+        const hasElements = await tabView.webContents.executeJavaScript(`!!(document.querySelector('.ds-modal-wrapper')?.querySelectorAll('div.ds-button--outlined[role="button"]'))`);
+        if (hasElements) {
+            const jsCode = `(() => { 
                         const elements = document.querySelector('.ds-modal-wrapper').querySelectorAll('div.ds-button--outlined[role="button"]');
                         const themes = ['light', 'dark', 'system'];
                         for (let i = 0; i < themes.length; i++) {
@@ -120,27 +150,21 @@ async function toggleApplicationTheme(theme, fromWeb = false) {
                         }
                     })();`;
 
-                    tabView.webContents.executeJavaScript(jsCode);
-                } else {
-                    if (currentTheme === 'dark') {
-                        tabView.webContents.executeJavaScript("document.body.classList.replace('light', 'dark');")
-                        tabView.webContents.executeJavaScript("document.body.setAttribute('data-ds-dark-theme', 'dark');")
-                        tabView.webContents.executeJavaScript(`document.documentElement.setAttribute('data-immersive-translate-page-theme', 'dark');`)
-                    } else {
-                        tabView.webContents.executeJavaScript("document.body.classList.replace('dark', 'light');");
-                        tabView.webContents.executeJavaScript("document.body.removeAttribute('data-ds-dark-theme');")
-                        tabView.webContents.executeJavaScript(`document.documentElement.setAttribute('data-immersive-translate-page-theme', 'light');`)
-                    }
-
-                    setLocalStorage(tabView, '__appKit_@deepseek/chat_themePreference', `{\\\"value\\\":\\\"${theme}\\\",\\\"__version\\\":\\\"0\\\"}`);
-                }
+            tabView.webContents.executeJavaScript(jsCode);
+        } else {
+            if (currentTheme === 'dark') {
+                tabView.webContents.executeJavaScript("document.body.classList.replace('light', 'dark');");
+                tabView.webContents.executeJavaScript("document.body.setAttribute('data-ds-dark-theme', 'dark');");
+                tabView.webContents.executeJavaScript(`document.documentElement.setAttribute('data-immersive-translate-page-theme', 'dark');`);
+            } else {
+                tabView.webContents.executeJavaScript("document.body.classList.replace('dark', 'light');");
+                tabView.webContents.executeJavaScript("document.body.removeAttribute('data-ds-dark-theme');");
+                tabView.webContents.executeJavaScript(`document.documentElement.setAttribute('data-immersive-translate-page-theme', 'light');`);
             }
+
+            setLocalStorage(tabView, '__appKit_@deepseek/chat_themePreference', `{\\\"value\\\":\\\"${theme}\\\",\\\"__version\\\":\\\"0\\\"}`);
         }
     }
-
-    saveConfig('theme', theme);
-
-    updateMenus();
 }
 
 function removeLocalStorage(tabView, key) {
@@ -265,8 +289,8 @@ function updateMenus(updateTrayMenus = false, updateAppMenus = true) {
     }
     if (updateAppMenus) {
         Menu.setApplicationMenu(createContextMenu(false));
+        updateMenuBar();
     }
-    updateMenuBar();
 }
 
 function isSearchWidowVisible() {
@@ -289,15 +313,435 @@ function showApp() {
     getActiveTabView()?.webContents.focus();
 }
 
-function showAppAndAddNewTab(url) {
-    createNewTabBackend(url ?? getDefaultAISupplier().landingPage);
+function showAppAndAddNewTab(url, quickLauncher = false) {
+    const iconDefaults = getConfig('iconDefaults');
+    const landingPage = url ?? getDefaultAISupplier().landingPage;
 
-    showApp();
+    if ((iconDefaults === 'openNewTab' || !trayPopUpContextMenu) && !quickLauncher) {
+        createNewTabBackend(landingPage);
+        showApp();
+    } else if (iconDefaults === 'openQuickLauncher' || quickLauncher) {
+        trayPopUpContextMenu = false;
+        startTrayAnimation();
+
+        if (quickLauncherWindow) {
+            quickLauncherWindow.hide();
+            quickLauncherView.webContents.loadURL(landingPage);
+            return;
+        };
+
+        quickLauncherWindow = new BrowserWindow({
+            width: 0,
+            height: 0,
+            frame: false,
+            resizable: true,
+            alwaysOnTop: false,
+            show: false
+        });
+
+        quickLauncherView = new WebContentsView({
+            webPreferences: {
+                preload: path.join(__dirname, 'preload-tab.js'),
+                contextIsolation: true,
+                nodeIntegration: false,
+                transparent: true
+            }
+        });
+
+        quickLauncherWindow.contentView.addChildView(quickLauncherView);
+        quickLauncherView.webContents.loadURL(landingPage);
+
+        quickLauncherWindow.on('will-resize', (event, newBounds) => {
+            quickLauncherWindow.removeAllListeners('resize');
+
+            quickLauncherWindow.once('resize', async () => {
+                const [currentWidth, currentHeight] = quickLauncherWindow.getSize();
+                quickLauncherView.setBounds({
+                    x: 0,
+                    y: 0,
+                    width: currentWidth,
+                    height: currentHeight
+                });
+
+                await quickLauncherView.webContents.executeJavaScript(`
+                    document.documentElement.style.overflow = 'auto';
+                    document.body.style.overflow = 'auto';
+
+                    window.removeEventListener('mouseup', handleMouseUp);
+                    window.removeEventListener('keyup', handleKeyUp);
+
+                    window.addEventListener('keyup', (event) => {
+                        if (event.key === 'Escape') {
+                            setTimeout(() => {window.dispatchEvent(new CustomEvent('quick-launcher-changed', {
+                                detail: event.key 
+                        }));}, 150);
+                        }
+                    });
+
+                    document.documentElement.style['-webkit-app-region'] = 'no-drag';
+                `);
+            });
+        });
+
+        quickLauncherWindow.on('closed', () => {
+            quickLauncherWindow = null;
+            quickLauncherView = null;
+        });
+
+        quickLauncherView.webContents.on('did-finish-load', async () => {
+            await quickLauncherView.webContents.executeJavaScript(`
+            document.documentElement.style.overflow = 'hidden';
+            document.body.style.overflow = 'hidden';
+
+            function handleMouseUp(event) {
+                setTimeout(() => {window.dispatchEvent(new CustomEvent('quick-launcher-changed'));}, 150);
+            }
+            
+            window.addEventListener('mouseup', handleMouseUp);
+
+            function handleKeyUp(event) {
+                if (event.key === 'Escape') {
+                    setTimeout(() => {window.dispatchEvent(new CustomEvent('quick-launcher-changed', {
+                        detail: event.key 
+                }));}, 150);
+                } else {
+                    setTimeout(() => {window.dispatchEvent(new CustomEvent('quick-launcher-changed'));}, 150);
+                }
+            }
+
+            window.addEventListener('keyup', handleKeyUp);
+            `);
+
+            setTimeout(async () => {
+                await quickLauncherChanged();
+                setTimeout(async () => { await quickLauncherChanged(); }, 150);
+                stopTrayAnimation();
+                showQuickLauncherWindow();
+            }, 150 * 2);
+
+            quickLauncherView.webContents.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
+                if (checkGeminiRealChatURL(url) || checkGoogleSearchAIModeRealChatURL(url) || checkDeepSeekRealChatURL(url)) {
+                    startTrayAnimation();
+                    quickLauncherWindow.hide();
+                    setTimeout(async () => { await quickLauncherChanged(url); }, 150);
+                }
+            });
+        });
+    }
+}
+
+function showQuickLauncherWindow() {
+    quickLauncherWindow.show();
+    quickLauncherWindow.focus();
+    quickLauncherView.webContents.focus();
+}
+
+async function loadURLWithDomCheck(webContents, url, maxRetries = 6) {
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    startTrayAnimation();
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        if (webContents.isDestroyed()) return false;
+
+        webContents.removeAllListeners('did-finish-load');
+
+        const pageLoadPromise = new Promise((resolve) => {
+            webContents.once('did-finish-load', () => resolve());
+        });
+
+        webContents.loadURL(url);
+
+        await pageLoadPromise;
+
+        await sleep(1000);
+
+        try {
+            if (await isGeminiRealChatReady(webContents) || await isGoogleSearchAIModeRealChatReady(webContents) || await isDeepSeekRealChatReady(webContents)) {
+                stopTrayAnimation();
+                return true;
+            }
+        } catch (err) { }
+
+        if (attempt < maxRetries) {
+            await sleep(1000);
+        }
+    }
+
+    return false;
+}
+
+async function quickLauncherChanged(detail) {
+    if (!quickLauncherWindow || !quickLauncherView || quickLauncherWindow.isDestroyed()) return;
+
+    if (detail) {
+        if (detail === 'Escape') {
+            quickLauncherWindow.close();
+        } else {
+            if (hasGoogleSeachAIModeDomCheckURL) return;
+            hasGoogleSeachAIModeDomCheckURL = checkGoogleSearchAIModeRealChatURL(detail);
+
+            if (hasGoogleSeachAIModeDomCheckURL && !ignored1stGoogleSeachAIModeDomCheckURL) {
+                ignored1stGoogleSeachAIModeDomCheckURL = true;
+                hasGoogleSeachAIModeDomCheckURL = false;
+                return;
+            }
+
+            const activeWebContents = createNewTabBackend(detail).webContents;
+
+            if (activeWebContents) {
+                const success = await loadURLWithDomCheck(activeWebContents, detail, 6);
+
+                if (success) {
+                    hasGoogleSeachAIModeDomCheckURL = false;
+                    ignored1stGoogleSeachAIModeDomCheckURL = false;
+                    quickLauncherWindow?.close();
+                    showApp();
+                }
+            }
+        }
+
+        return;
+    }
+
+    let jsCode = '';
+
+    const currentURL = quickLauncherView.webContents.getURL();
+
+    if (currentURL === constants.AI_SUPPLIERS.G_GEMINI.landingPage) {
+        jsCode = `
+                (function() {
+                    const inputEl = document.querySelector('.text-input-field');
+                    if (!inputEl) return null;
+
+                    document.documentElement.style['-webkit-app-region'] = 'drag';
+                    inputEl.style['-webkit-app-region'] = 'no-drag';
+                    const inputDomRect = inputEl.getBoundingClientRect();
+                    const overlayEl = document.querySelector('.cdk-overlay-pane');
+
+                    let overlayHeight = 0; 
+                    let top = inputDomRect.top;
+                    
+                    if (overlayEl) {
+                        document.documentElement.style['-webkit-app-region'] = 'no-drag';
+                        const overlayDomRect = overlayEl.getBoundingClientRect();
+                        if (overlayDomRect.y + overlayDomRect.height > inputDomRect.y + inputDomRect.height) {
+                            overlayHeight = overlayDomRect.height - (inputDomRect.y + inputDomRect.height - overlayDomRect.y);
+                        }
+
+                        if (overlayDomRect.y < inputDomRect.y) {
+                            top = overlayDomRect.top;
+                            overlayHeight = inputDomRect.y - overlayDomRect.y;
+                        }
+                    } else {
+                        document.documentElement.style['-webkit-app-region'] = 'drag';
+                        inputEl.style['-webkit-app-region'] = 'no-drag';
+                    }
+
+                    return {
+                        width: inputDomRect.width,
+                        height: inputDomRect.height + overlayHeight,
+                        top: top,
+                        left: inputDomRect.left
+                    };
+                })();
+                `;
+    } else if (currentURL.includes(constants.AI_SUPPLIERS.G_SEACH_AI_MODE.landingPage)) {
+        jsCode = `
+                (function() {
+                    const inputEl = document.querySelector('div[data-xid="aim-zero-state-input-plate"]');
+                    const stateEl = document.querySelector('div[data-xid="aim-zero-state"]').parentElement;
+                    if (!inputEl || !stateEl) return null;
+
+                    stateEl.style['-webkit-app-region'] = 'drag';
+                    inputEl.style['-webkit-app-region'] = 'no-drag';
+                    const inputDomRect = inputEl.getBoundingClientRect();
+                    const overlayEl = inputEl.querySelector('div[data-is-aim-input-menu]');
+
+                    let overlayHeight = 0; 
+                    let top = inputDomRect.top;
+                    
+                    if (overlayEl && overlayEl.getBoundingClientRect().height > 0) {
+                        stateEl.style['-webkit-app-region'] = 'no-drag';
+                        const overlayDomRect = overlayEl.getBoundingClientRect();
+                        if (overlayDomRect.y + overlayDomRect.height > inputDomRect.y + inputDomRect.height) {
+                            overlayHeight = overlayDomRect.height - (inputDomRect.y + inputDomRect.height - overlayDomRect.y);
+                        }
+
+                        if (overlayDomRect.y < inputDomRect.y) {
+                            top = overlayDomRect.top;
+                            overlayHeight = inputDomRect.y - overlayDomRect.y;
+                        }
+                    } else {
+                        stateEl.style['-webkit-app-region'] = 'drag';
+                        inputEl.style['-webkit-app-region'] = 'no-drag';
+                    }
+
+                    const container = document.querySelector('[data-xid$="-turns-container"]');
+
+                    if (container) {
+                        container.style['-webkit-app-region'] = 'no-drag';
+                        const containerDomRect = container.getBoundingClientRect();
+                        const containerDomRectHeight = containerDomRect.height + containerDomRect.y - inputDomRect.height - inputDomRect.y;
+                        overlayHeight = overlayHeight > containerDomRectHeight ? overlayHeight : containerDomRectHeight;
+                    }
+
+                    return {
+                        width: inputDomRect.width,
+                        height: inputDomRect.height + overlayHeight,
+                        top: top,
+                        left: inputDomRect.left
+                    };
+                })();
+                `;
+    } else if (currentURL === constants.AI_SUPPLIERS.DS_CHAT.landingPage) {
+        jsCode = `
+                (function() {
+                    const modeEl = document.querySelector('div[role="radiogroup"]').parentElement;
+                    if (!modeEl) return null;
+                    const inputEl = modeEl.nextElementSibling;
+                    if (!inputEl) return null;
+
+                    modeEl.parentElement.style['-webkit-app-region'] = 'drag';
+                    modeEl.style['-webkit-app-region'] = 'no-drag';
+                    inputEl.style['-webkit-app-region'] = 'no-drag';
+
+                    const modeDomRect = modeEl.getBoundingClientRect();
+                    const inputDomRect = inputEl.getBoundingClientRect();
+                    const inputDomRectHeight = inputDomRect.height + inputDomRect.y - modeDomRect.height - modeDomRect.y; 
+
+                    return {
+                        width: inputDomRect.width,
+                        height: inputDomRectHeight + modeDomRect.height,
+                        top: modeDomRect.top,
+                        left: inputDomRect.left
+                    };
+                })();
+                `;
+    }
+
+    if (jsCode === '') return;
+
+    const rect = await quickLauncherView.webContents.executeJavaScript(jsCode);
+
+    quickLauncherView.setBounds({
+        x: (-rect.left + 16) * currentZoomFactor,
+        y: (-rect.top + 16) * currentZoomFactor,
+        width: 1200,
+        height: 800
+    });
+
+    resizeQuickLauncher(quickLauncherWindow, (rect.width + 32) * currentZoomFactor, (rect.height + 32) * currentZoomFactor);
+}
+
+function resizeQuickLauncher(window, targetWidth, targetHeight) {
+    const newWidth = Math.ceil(targetWidth);
+    const newHeight = Math.ceil(targetHeight);
+
+    const [currentWidth, currentHeight] = window.getSize();
+    if (currentWidth === newWidth && currentHeight === newHeight) return;
+
+    const currentScreen = screen.getDisplayMatching(window.getBounds());
+    const { x: sx, y: sy, width: sw, height: sh } = currentScreen.workArea;
+    const currentBounds = window.getBounds();
+
+    let newX = currentBounds.x;
+    let newY = currentBounds.y;
+
+    const windowCenterY = currentBounds.y + Math.floor(currentBounds.height / 2);
+    const screenCenterY = sy + Math.floor(sh / 2);
+
+    if (windowCenterY > screenCenterY) {
+        newY = (currentBounds.y + currentBounds.height) - newHeight;
+
+        if (newY < sy) newY = sy;
+    }
+    else {
+        newY = currentBounds.y;
+
+        if (newY + newHeight > sy + sh) {
+            newY = (sy + sh) - newHeight;
+        }
+    }
+
+    if (newX + newWidth > sx + sw) {
+        newX = sx + sw - newWidth;
+    }
+
+    window.setBounds({
+        x: Math.ceil(newX),
+        y: Math.ceil(newY),
+        width: newWidth,
+        height: newHeight
+    });
+}
+
+function startTrayAnimation() {
+    if (animationTimer) {
+        stopTrayAnimation();
+    }
+
+    if (cachedFrames.length === 0) {
+        const imagePath = path.join(ICON_PATH);
+        baseImage = nativeImage.createFromPath(imagePath);
+
+        const traySize = process.platform === 'darwin' ? 22 : 32;
+        const resizedBase = baseImage.resize({ width: traySize, height: traySize, quality: 'best' });
+
+        const bitmap = resizedBase.toBitmap();
+        const size = resizedBase.getSize();
+
+        const opacities = [0.25, 0.50, 0.75, 1.00];
+
+        cachedFrames = opacities.map(opacity => {
+            if (opacity === 1.0) return resizedBase;
+
+            const newBitmap = Buffer.from(bitmap);
+
+            for (let i = 0; i < newBitmap.length; i += 4) {
+                newBitmap[i + 3] = Math.round(newBitmap[i + 3] * opacity);
+            }
+
+            return nativeImage.createFromBuffer(newBitmap, {
+                width: size.width,
+                height: size.height
+            });
+        });
+    }
+
+    tray.setToolTip(APP_NAME + ' - Loading...');
+
+    animationTimer = setInterval(() => {
+        let frameIndex = currentStep;
+        if (currentStep > 3) {
+            frameIndex = 6 - currentStep;
+        }
+
+        if (tray && cachedFrames[frameIndex]) {
+            tray.setImage(cachedFrames[frameIndex]);
+        }
+
+        currentStep = (currentStep + 1) % 6;
+    }, 150);
+}
+
+function stopTrayAnimation() {
+    if (animationTimer) {
+        clearInterval(animationTimer);
+        animationTimer = null;
+    }
+
+    if (tray && cachedFrames[3]) {
+        tray.setImage(cachedFrames[3]);
+        tray.setToolTip(APP_NAME);
+    }
+
+    currentStep = 0;
 }
 
 function createNewTabBackend(url) {
     const tabId = 'tab_' + Date.now();
-    createNewTabInstance(tabId, url, true);
+    return createNewTabInstance(tabId, url, true);
 }
 
 function getCallerName() {
@@ -324,15 +768,13 @@ function resizeViews() {
 function createMainWindow() {
     Menu.setApplicationMenu(createContextMenu(false));
 
-    const iconPath = path.join(__dirname, 'assets/icon.png');
-
     mainWindow = new BaseWindow({
         width: 1200,
         height: 800,
         title: APP_NAME,
-        icon: iconPath,
+        icon: ICON_PATH,
         frame: DEFAULT_MAIN_WINDOW_FRAME,
-        show: true,
+        show: !getConfig('minimizeToTrayOnStartup'),
         autoHideMenuBar: false
     });
 
@@ -365,16 +807,23 @@ function createMainWindow() {
         handleTrayClick();
     });
 
-    tray = new Tray(iconPath);
+    globalShortcut.register('CmdOrCtrl+Shift+Alt+Space', () => {
+        trayPopUpContextMenu = true;
+        showAppAndAddNewTab(getConfig('defaultAISupplier') ? getDefaultAISupplier().landingPage : getNextLandingPage(quickLauncherView?.webContents.getURL()));
+    })
+
+    tray = new Tray(ICON_PATH);
 
     tray.setToolTip(APP_NAME);
     tray.setContextMenu(createContextMenu(true));
     tray.on('click',
         () => {
-            if (getConfig('iconDefaults') === null || getConfig('iconDefaults') === 'showHideWindow') {
+            trayPopUpContextMenu = true;
+            const iconDefaults = getConfig('iconDefaults');
+            if (iconDefaults === null || iconDefaults === 'showHideWindow') {
                 handleTrayClick();
             }
-            else if (getConfig('iconDefaults') === 'openNewTab') {
+            else if (iconDefaults === 'openNewTab' || iconDefaults === 'openQuickLauncher') {
                 if (isDefaultAISupplierSet()) {
                     showAppAndAddNewTab();
                 } else {
@@ -388,6 +837,8 @@ function createMainWindow() {
             }
         }
     );
+
+    startTrayAnimation();
 
     if (!IS_LINUX) {
         mainWindow.on('enter-full-screen', () => {
@@ -409,6 +860,23 @@ function createMainWindow() {
         const menu = Menu.buildFromTemplate(defaultMenuTemplate);
         menu.popup();
     });
+}
+
+function getNextLandingPage(currentUrl) {
+    const urlList = Object.values(constants.AI_SUPPLIERS).map(s => s.landingPage);
+
+    if (!currentUrl) {
+        return urlList[0];
+    }
+
+    const currentIndex = urlList.indexOf(currentUrl);
+    if (currentIndex === -1) {
+        return urlList[0];
+    }
+
+    const nextIndex = (currentIndex + 1) % urlList.length;
+
+    return urlList[nextIndex];
 }
 
 function autoHideMenuBar() {
@@ -442,19 +910,37 @@ function zoomApp(factor) {
 
     titleBarView?.webContents.setZoomFactor(currentZoomFactor);
     getActiveTabView()?.webContents.setZoomFactor(currentZoomFactor);
+    searchWin?.webContents.setZoomFactor(currentZoomFactor);
+    quickLauncherView?.webContents.setZoomFactor(currentZoomFactor);
+    setTimeout(() => { resizeSearchWindow(); quickLauncherChanged(); }, 150);
 
     appHeaderHeight = Math.round(baseAppHeaderHeight * currentZoomFactor);
     updateMenus();
+}
+
+async function isGeminiRealChatReady(webContents) {
+    return await webContents.executeJavaScript(`
+                !!(document.querySelector('.conversation-container') && document.querySelector('conversation-actions-icon') && document.querySelector('[trace="ChatContainer"]'))
+                `);
+}
+
+async function isGoogleSearchAIModeRealChatReady(webContents) {
+    return await webContents.executeJavaScript(`
+                !!(document.querySelector('div[data-xid="aim-mars-turn-root"]') && document.querySelector('div[data-scope-id="turn"]') && document.querySelector('div[data-container-id="main-col"]') && document.querySelector('div[data-container-id="main-col"]').querySelector('div[style="display: contents"]').innerText.trim() !== '')
+                `);
+}
+
+async function isDeepSeekRealChatReady(webContents) {
+    return await webContents.executeJavaScript(`
+                !!(document.querySelector('.ds-virtual-list-visible-items') && document.querySelector('div[data-virtual-list-item-key]'))
+                `);
 }
 
 async function triggerExport(type) {
     const activeTabView = getActiveTabView();
 
     if (isGeminiRealChatURL(activeTabView)) {
-        const isGeminiRealChatReady = await activeTabView.webContents.executeJavaScript(`
-                !!(document.querySelector('.conversation-container') && document.querySelector('conversation-actions-icon') && document.querySelector('[trace="ChatContainer"]'))
-                `);
-        if (isGeminiRealChatReady) {
+        if (await isGeminiRealChatReady(activeTabView.webContents)) {
             const jsCode = `
             (function() {
                 try {
@@ -485,11 +971,14 @@ async function triggerExport(type) {
                                     try {
                                         let htmlContent = "";
                                         try {
+                                            iframeElement.contentDocument.querySelector('.export-title').innerText += ' - Google Gemini';
                                             htmlContent = iframeElement.contentDocument.documentElement.innerHTML;
                                         } catch (err) {
                                             try {
+                                                win.document.querySelector('.export-title').innerText += ' - Google Gemini';
                                                 htmlContent = win.document.documentElement.innerHTML;
                                             } catch (err2) {
+                                                document.querySelector('.export-title').innerText += ' - Google Gemini';
                                                 htmlContent = document.body.innerHTML;
                                             }
                                         }
@@ -546,11 +1035,7 @@ async function triggerExport(type) {
             activeTabView.webContents.executeJavaScript(jsCode);
         }
     } else if (isGoogleSearchAIModeRealChatURL(activeTabView)) {
-        const isGoogleSearchAIModeRealChatReady = await activeTabView.webContents.executeJavaScript(`
-                !!(document.querySelector('div[data-xid="aim-mars-turn-root"]') && document.querySelector('div[data-scope-id="turn"]') && document.querySelector('div[data-container-id="main-col"]'))
-                `);
-
-        if (isGoogleSearchAIModeRealChatReady) {
+        if (await isGoogleSearchAIModeRealChatReady(activeTabView.webContents)) {
             await blurActiveTabView(activeTabView);
 
             const jsCode = `(function() { try { 
@@ -710,11 +1195,7 @@ async function triggerExport(type) {
             await exportHTMLContent(activeTabView.webContents, htmlContent, type);
         }
     } else if (isDeepSeekRealChatURL(activeTabView)) {
-        const isDeepSeekRealChatReady = await activeTabView.webContents.executeJavaScript(`
-                !!(document.querySelector('.ds-virtual-list-visible-items') && document.querySelector('div[data-virtual-list-item-key]'))
-                `);
-
-        if (isDeepSeekRealChatReady) {
+        if (await isDeepSeekRealChatReady(activeTabView.webContents)) {
             await blurActiveTabView(activeTabView);
 
             const executionResult = await activeTabView.webContents.executeJavaScript(`
@@ -728,7 +1209,9 @@ async function triggerExport(type) {
                 const dynamicCssUrl = mainLinkElement ? mainLinkElement.href : "";
                          resolve({
                     html: document.documentElement.innerHTML,
-                    cssUrl: dynamicCssUrl
+                    cssUrl: dynamicCssUrl,
+                    title: document.title,
+                    headerCssName: document.querySelector('.the-header').parentElement.classList.value
                 });
                     }, 150); 
                 });
@@ -736,6 +1219,8 @@ async function triggerExport(type) {
 
             const htmlContent = executionResult.html;
             const dynamicCssUrl = executionResult.cssUrl;
+            const title = executionResult.title;
+            const headerCssName = executionResult.headerCssName;
 
             if (dynamicCssUrl) {
                 try {
@@ -789,9 +1274,14 @@ async function triggerExport(type) {
                         display: block !important;
                         background: #fff !important;
                     }
+                    .export-title {
+                        display: none !important;
+                    }
+                    .${headerCssName} {display: flex !important;}
                     ${remoteCssText}
                     ${extractedPrintStyles}
                 </style>
+                <h1 class="export-title">${title}</h1>
                 `;
 
             await exportHTMLContent(activeTabView.webContents, htmlContent + forcedPrintStyles, type);
@@ -811,19 +1301,28 @@ function createContextMenu(isTray) {
     const menuTemplate = [];
     const entries = Object.entries(constants.AI_SUPPLIERS);
 
-    let newTabItme = null;
+    let newTabItem = null;
+    let quickLauncherItem = null;
     addTabItems = [];
 
     if (isDefaultAISupplierSet()) {
         const defaultAISupplier = getDefaultAISupplier();
-        newTabItme = {
+        newTabItem = {
             id: 'm-newtab',
             label: 'New Tab - ' + defaultAISupplier.label,
             click: () => {
                 showAppAndAddNewTab();
             }
         };
+        quickLauncherItem = {
+            id: 'm-newQuickLauncher',
+            label: 'New Quick Launcher - ' + defaultAISupplier.label,
+            click: () => {
+                showAppAndAddNewTab(null, true);
+            }
+        };
     } else {
+        const addLauncherItems = [];
         entries.map(([key, value]) => {
             addTabItems.push({
                 id: 'm-newtab-' + value.id,
@@ -831,14 +1330,27 @@ function createContextMenu(isTray) {
                 click: () => {
                     showAppAndAddNewTab(value.landingPage);
                 }
+            });
+
+            addLauncherItems.push({
+                id: 'm-newQuickLauncher-' + value.id,
+                label: value.label,
+                click: () => {
+                    showAppAndAddNewTab(value.landingPage, true);
+                }
             })
         });
 
-
-        newTabItme = {
+        newTabItem = {
             id: 'm-newtab',
             label: 'New Tab',
             submenu: addTabItems
+        };
+
+        quickLauncherItem = {
+            id: 'm-newQuickLauncher',
+            label: 'New Quick Launcher',
+            submenu: addLauncherItems
         };
     }
 
@@ -853,7 +1365,8 @@ function createContextMenu(isTray) {
     const separatorItem = { type: 'separator' };
 
     if (isTray) {
-        menuTemplate.push(newTabItme);
+        menuTemplate.push(newTabItem);
+        menuTemplate.push(quickLauncherItem);
         menuTemplate.push(separatorItem);
     }
     else {
@@ -881,13 +1394,14 @@ function createContextMenu(isTray) {
         menuTemplate.push({
             id: "file-menu",
             label: 'File',
-            submenu: [newTabItme, separatorItem, exportItems, separatorItem, exitItem]
+            submenu: [newTabItem, quickLauncherItem, separatorItem, exportItems, separatorItem, exitItem]
         });
     }
 
     const toggleWindowVisibilityItem = {
         id: 'toggle-window-visibility',
         visible: !IS_LINUX,
+        enabled: !IS_LINUX,
         accelerator: 'CmdOrCtrl+Shift+Space',
         label: (isMainWidowVisible() ? 'Hide' : 'Show') + ' Window',
         click: () => {
@@ -979,6 +1493,7 @@ function createContextMenu(isTray) {
                     id: "m-menubar",
                     label: (getConfig('autoHideTitleBar') ? 'Show' : 'Hide') + ' Title Bar',
                     visible: !IS_LINUX,
+                    enabled: !IS_LINUX,
                     accelerator: 'CmdOrCtrl+Shift+M',
                     click: (menuItem) => {
                         toggleTitleBar();
@@ -991,9 +1506,11 @@ function createContextMenu(isTray) {
         const landingPageItems = [{
             id: "m-nta-let-me-choose",
             label: 'Let Me Choose',
+            type: 'radio',
             checked: !isDefaultAISupplierSet(),
             click: (menuItem) => {
                 saveConfig('defaultAISupplier', '');
+                saveConfig('openNewTabOnStartup', !menuItem.checked);
                 updateMenus(true);
             }
         },
@@ -1023,27 +1540,28 @@ function createContextMenu(isTray) {
                     submenu: landingPageItems
                 },
                 {
-                    id: "m-tray-behavior",
-                    label: "Tray Icon Behavior",
-                    visible: !IS_LINUX,
+                    id: "m-startup-behavior",
+                    label: "On Startup Behavior",
                     submenu: [
                         {
-                            id: "m-tb-showhide",
-                            label: 'Show / Hide Window',
-                            type: 'radio',
-                            checked: getConfig('iconDefaults') === 'showHideWindow',
+                            id: "m-sb-open-new-tab-on-startup",
+                            label: 'Open New Tab - ' + (isDefaultAISupplierSet() ? getDefaultAISupplier().label : 'Let Me Choose...'),
+                            type: 'checkbox',
+                            enabled: isDefaultAISupplierSet(),
+                            checked: !isDefaultAISupplierSet() || getConfig('openNewTabOnStartup'),
                             click: (menuItem) => {
-                                saveConfig('iconDefaults', 'showHideWindow');
+                                saveConfig('openNewTabOnStartup', menuItem.checked);
                                 updateMenus();
                             }
                         },
                         {
-                            id: "m-tb-newtab",
-                            label: 'Open New Tab',
-                            type: 'radio',
-                            checked: getConfig('iconDefaults') === 'openNewTab',
+                            id: "m-sb-tray",
+                            label: 'Minimize to Tray',
+                            visible: !IS_LINUX,
+                            type: 'checkbox',
+                            checked: getConfig('minimizeToTrayOnStartup'),
                             click: (menuItem) => {
-                                saveConfig('iconDefaults', 'openNewTab');
+                                saveConfig('minimizeToTrayOnStartup', menuItem.checked);
                                 updateMenus();
                             }
                         }
@@ -1089,6 +1607,43 @@ function createContextMenu(isTray) {
                                     saveConfig('minimizeToTrayOnClose', !menuItem.checked);
                                 }
                                 saveConfig('exitDontAskAgain', menuItem.checked);
+                                updateMenus();
+                            }
+                        }
+                    ]
+                },
+                {
+                    id: "m-tray-behavior",
+                    label: "Tray Icon Behavior",
+                    visible: !IS_LINUX,
+                    submenu: [
+                        {
+                            id: "m-tb-showhide",
+                            label: 'Show / Hide Window',
+                            type: 'radio',
+                            checked: getConfig('iconDefaults') === 'showHideWindow',
+                            click: (menuItem) => {
+                                saveConfig('iconDefaults', 'showHideWindow');
+                                updateMenus();
+                            }
+                        },
+                        {
+                            id: "m-tb-newtab",
+                            label: 'Open New Tab - ' + (isDefaultAISupplierSet() ? getDefaultAISupplier().label : 'Let Me Choose...'),
+                            type: 'radio',
+                            checked: getConfig('iconDefaults') === 'openNewTab',
+                            click: (menuItem) => {
+                                saveConfig('iconDefaults', 'openNewTab');
+                                updateMenus();
+                            }
+                        },
+                        {
+                            id: "m-tb-quick-launcher",
+                            label: 'Open Quick Launcher - ' + (isDefaultAISupplierSet() ? getDefaultAISupplier().label : 'Let Me Choose...'),
+                            type: 'radio',
+                            checked: getConfig('iconDefaults') === 'openQuickLauncher',
+                            click: (menuItem) => {
+                                saveConfig('iconDefaults', 'openQuickLauncher');
                                 updateMenus();
                             }
                         }
@@ -1329,22 +1884,39 @@ function exit() {
     app.quit();
 }
 
-function isGeminiRealChatURL(tabView) {
-    const currentURL = tabView.webContents.getURL();
+function checkGeminiRealChatURL(currentURL) {
     const geminiChatRegex = /gemini\.google\.com\/app\/[0-9a-fA-F]{16}/;
 
     return geminiChatRegex.test(currentURL);
 }
 
+function isGeminiRealChatURL(tabView) {
+    if (!tabView || !tabView.webContents) return false;
+
+    return checkGeminiRealChatURL(tabView.webContents.getURL());
+}
+
 function isDeepSeekRealChatURL(tabView) {
+    if (!tabView || !tabView.webContents) return false;
+
     const currentURL = tabView.webContents.getURL();
+    return checkDeepSeekRealChatURL(currentURL);
+}
+
+function checkDeepSeekRealChatURL(currentURL) {
     const dsChatRegex = /chat\.deepseek\.com\/a\/chat\/s\/([0-9a-fA-F]{16}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/;
 
     return dsChatRegex.test(currentURL);
 }
 
 function isGoogleSearchAIModeRealChatURL(tabView) {
+    if (!tabView || !tabView.webContents) return false;
+
     const currentURL = tabView.webContents.getURL();
+    return checkGoogleSearchAIModeRealChatURL(currentURL);
+}
+
+function checkGoogleSearchAIModeRealChatURL(currentURL, ignoreExtraParams = false) {
     const targetUrl = new URL(constants.AI_SUPPLIERS.G_SEACH_AI_MODE.landingPage);
     const currentUrlObj = new URL(currentURL);
 
@@ -1353,16 +1925,23 @@ function isGoogleSearchAIModeRealChatURL(tabView) {
 
     const targetParams = targetUrl.searchParams;
     const currentParams = currentUrlObj.searchParams;
+    const extraParams = new URLSearchParams([['q', ''], ['mstk', '']]);
 
-    const isQueryMatch = Array.from(targetParams.keys()).every(key =>
-        currentParams.has(key) && currentParams.get(key) === targetParams.get(key)
+    const isQueryMatch = Array.from(targetParams.keys()).every(key => currentParams.has(key) && currentParams.get(key) === targetParams.get(key)
     );
+    const isExtraMatch = Array.from(extraParams.keys()).every(key => currentParams.has(key));
 
-    return isBaseMatch && isQueryMatch;
+    return isBaseMatch && isQueryMatch && (isExtraMatch || ignoreExtraParams);
 }
 
 function createNewTabInstance(id, url, sendMsg = false) {
     if (!mainWindow) return;
+
+    const blankTabId = Array.from(tabsMap.entries()).find(([id, tab]) => tab.webContents.getURL() === 'about:blank')?.[0];
+    if (blankTabId) {
+        closeTab(blankTabId);
+        titleBarView?.webContents.send('old-tab-closed', blankTabId);
+    }
 
     const tabView = new WebContentsView({
         webPreferences: {
@@ -1443,6 +2022,8 @@ function createNewTabInstance(id, url, sendMsg = false) {
     });
 
     toggleApplicationTheme(getConfig('theme') ?? 'system');
+
+    return tabView;
 }
 
 function reloadTabView(webContents) {
@@ -1514,7 +2095,7 @@ function restoreTabViewSize(activeTabView, bounds = null) {
         });
 
         setTimeout(() => {
-            activeTabView.webContents.focus();
+            activeTabView.webContents?.focus();
         }, 150);
     }
 }
@@ -1713,9 +2294,17 @@ function getExactMimeType(ext) {
 }
 
 function strictSafeFilename(userInputName, defaultTitle) {
-    let safeName = userInputName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    let safeName = userInputName.replace(/[\/\\:*?"<>|]/g, '_');
 
     safeName = safeName.replace(/^\.+/, '');
+
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder("utf-8");
+    let buf = encoder.encode(safeName);
+
+    if (buf.length > 255) {
+        safeName = decoder.decode(buf.slice(0, 255));
+    }
 
     return safeName || defaultTitle;
 }
@@ -1762,7 +2351,7 @@ async function exportHTMLContent(sender, htmlContent, type) {
                 title: 'Export Success',
                 body: 'Your file is ready.',
                 silent: false,
-                icon: path.join(__dirname, 'assets/icon.png')
+                icon: ICON_PATH
             })
 
             notice.show()
@@ -1780,9 +2369,9 @@ function createSearchWindow(tabView) {
     const winBounds = mainWindow.getContentBounds();
 
     searchWin = new BrowserWindow({
-        width: 320,
-        height: 40,
-        x: winBounds.x + winBounds.width - 320,
+        width: 320 * currentZoomFactor,
+        height: 40 * currentZoomFactor,
+        x: winBounds.x + winBounds.width - (320 * currentZoomFactor),
         y: winBounds.y + appHeaderHeight,
         parent: mainWindow,
         frame: false,
@@ -1798,11 +2387,23 @@ function createSearchWindow(tabView) {
 
     searchWin.on('closed', () => {
         searchWin = null;
-        if (tabView) tabView.webContents.stopFindInPage('clearSelection');
+        if (tabView) tabView.webContents?.stopFindInPage('clearSelection');
     });
 
     searchWin.webContents.on('dom-ready', () => {
         searchWin.webContents.send('theme-changed', currentTheme);
+    });
+}
+
+function resizeSearchWindow() {
+    if (!searchWin) return;
+
+    const winBounds = mainWindow.getContentBounds();
+    searchWin.setBounds({
+        width: 320 * currentZoomFactor,
+        height: 40 * currentZoomFactor,
+        x: winBounds.x + winBounds.width - (320 * currentZoomFactor),
+        y: winBounds.y + appHeaderHeight,
     });
 }
 
@@ -1845,6 +2446,20 @@ function changeWindowBg(color) {
         mainWindow.setBackgroundColor(color);
     }
 }
+
+function closeTab(id) {
+    if (!mainWindow) return;
+    const tabView = tabsMap.get(id);
+    if (tabView) {
+        mainWindow.contentView.removeChildView(tabView);
+        tabView.webContents.destroy();
+        tabsMap.delete(id);
+    }
+}
+
+ipcMain.handle('quick-launcher-changed', async (event, detail) => {
+    await quickLauncherChanged(detail);
+});
 
 ipcMain.handle('upload-files', async (event, acceptString) => {
     try {
@@ -2110,13 +2725,7 @@ ipcMain.handle('switch-tab', (event, { id }) => {
 });
 
 ipcMain.handle('close-tab', (event, { id }) => {
-    if (!mainWindow) return;
-    const tabView = tabsMap.get(id);
-    if (tabView) {
-        mainWindow.contentView.removeChildView(tabView);
-        tabView.webContents.destroy();
-        tabsMap.delete(id);
-    }
+    closeTab(id);
 });
 
 ipcMain.handle('get-current-theme', () => {
@@ -2131,12 +2740,14 @@ ipcMain.handle('get-config', (event, key) => {
     return getConfig(key);
 });
 
-ipcMain.handle('is-google-search-ai-mode-real-chat-url', () => {
-    return isGoogleSearchAIModeRealChatURL(getActiveTabView());
+ipcMain.handle('is-google-search-ai-mode-real-chat-url', (event, url) => {
+    return checkGoogleSearchAIModeRealChatURL(url, true);
 });
 
-ipcMain.handle('get-default-ai-supplier', () => {
-    return getDefaultAISupplier();
+ipcMain.handle('get-default-ai-supplier', (event, ignoreStartup) => {
+    return getConfig('defaultAISupplier') && (getConfig('openNewTabOnStartup') || ignoreStartup) ? getDefaultAISupplier() : {
+        id: 'about_blank', landingPage: 'about:blank', label: 'aboutBlank'
+    };
 });
 
 ipcMain.handle('web-theme-changed', (event, theme) => {
@@ -2195,6 +2806,7 @@ ipcMain.handle('export-html-content', async (event, { htmlContent, type }) => {
 
 ipcMain.handle('menus-updated', () => {
     resizeViews();
+    stopTrayAnimation();
 });
 
 ipcMain.handle('start-search', (event, text) => {

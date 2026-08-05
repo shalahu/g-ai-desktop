@@ -142,8 +142,8 @@ window.addEventListener('DOMContentLoaded', async () => {
         Object.defineProperty(window, 'parent', { get: () => window });
         window.open = (url) => { window.location.href = url; return window; };
 
-        if (await ipcRenderer.invoke('is-google-search-ai-mode-real-chat-url')) {
-            initUploadFileInput();
+        if (await ipcRenderer.invoke('is-google-search-ai-mode-real-chat-url', window.location.href)) {
+            setTimeout(() => { initUploadFileInput(); }, 1500);
         } else if (window.location.href.toLowerCase().includes('deepseek.com')) {
             initThemeSelector();
         }
@@ -170,4 +170,8 @@ window.addEventListener('mousedown', async (event) => {
         event.preventDefault();
         await ipcRenderer.invoke('zoom-app', 0);
     }
+});
+
+window.addEventListener('quick-launcher-changed', async (event) => {
+    await ipcRenderer.invoke('quick-launcher-changed', event.detail);
 });
