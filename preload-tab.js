@@ -116,6 +116,7 @@ window.addEventListener('local-storage-set-bridge', async (event) => {
             await ipcRenderer.invoke('web-theme-changed', value === "Bard-Dark-Theme" ? 'dark' : 'light');
             break;
         case '__appKit_@deepseek/chat_themePreference':
+        case 'CUSTOM_THEME':
             await ipcRenderer.invoke('web-theme-changed', value.includes('system') ? null : (value.includes('dark') ? 'dark' : 'light'));
             initThemeSelector();
             break;
@@ -174,4 +175,17 @@ window.addEventListener('mousedown', async (event) => {
 
 window.addEventListener('quick-launcher-changed', async (event) => {
     await ipcRenderer.invoke('quick-launcher-changed', event.detail);
+});
+
+window.addEventListener('net-fetch-html-request', async (event) => {
+    const { requestId, src } = event.detail;
+    const htmlResult = await ipcRenderer.invoke('net-fetch-html', { src });
+
+    const responseEvent = new CustomEvent('net-fetch-html-response', {
+        detail: {
+            requestId: requestId,
+            html: htmlResult
+        }
+    });
+    window.dispatchEvent(responseEvent);
 });
