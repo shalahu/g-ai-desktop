@@ -5,7 +5,7 @@
   "author": "g-ai <shalahu@163.com>",
   "icon": "assets/icon.png",
   "copyright": "Copyright © 2026 g-ai",
-  "main": "main.js",
+  "main": "src/main/index.js",
   "scripts": {
     "start": "electron .",
     "build": "echo 'No frontend build step required'",
@@ -27,6 +27,11 @@
     "directories": {
       "output": "dist"
     },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
     "win": {
       "icon": "assets/icon.ico",
       "target": [
