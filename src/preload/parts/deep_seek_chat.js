@@ -24,12 +24,12 @@ function initThemeSelector() {
     themeSelectorBtnsObserver.observe(document.body, { childList: true, subtree: true });
 }
 
-window.__tabDrivers = window.__tabDrivers || [];
-window.__tabDrivers.push(() => {
+window.__onDOMContentLoadedActions = window.__onDOMContentLoadedActions || [];
+window.__onDOMContentLoadedActions.push(() => {
     if (window.location.href.toLowerCase().includes('deepseek.com')) {
         initThemeSelector();
     }
 });
 
-window.__tabDriverActions = window.__tabDriverActions || {};
-window.__tabDriverActions['init-theme-selector'] = () => initThemeSelector();
+window.__onHandleLocalStorageThemeBridgeActions = window.__onHandleLocalStorageThemeBridgeActions || {};
+window.__onHandleLocalStorageThemeBridgeActions['init-theme-selector'] = () => initThemeSelector();

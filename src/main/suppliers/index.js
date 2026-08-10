@@ -3,6 +3,7 @@ const GeminiSupplier = require('./GeminiSupplier');
 const GoogleSearchAISupplier = require('./GoogleSearchAISupplier');
 const DeepSeekSupplier = require('./DeepSeekSupplier');
 const KimiSupplier = require('./KimiSupplier');
+const CopilotSupplier = require('./CopilotSupplier');
 
 const aiRegistry = new Map();
 
@@ -14,6 +15,7 @@ register(new GeminiSupplier());
 register(new GoogleSearchAISupplier());
 register(new DeepSeekSupplier());
 register(new KimiSupplier());
+register(new CopilotSupplier());
 
 function getSupplierByLandingPage(url) {
     if (!url) return null;

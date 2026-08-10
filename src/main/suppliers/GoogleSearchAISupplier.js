@@ -4,7 +4,7 @@ const { APP_USER_AGENT } = require('../constants');
 
 class GoogleSearchAISupplier extends BaseAISupplier {
     constructor() {
-        super('google_search_ai_node', 'Google Search (AI Mode)', 'https://www.google.com/search?atvm=2&udm=50');
+        super('google_search_ai_mode', 'Google Search (AI Mode)', 'https://www.google.com/search?atvm=2&udm=50');
     }
 
     checkRealChatURL(currentURL, ignoreExtraParams = false) {
@@ -180,7 +180,7 @@ class GoogleSearchAISupplier extends BaseAISupplier {
         return false;
     }
 
-    async exportChat(webContents, type) {
+    async getExportHtmlContent(webContents, type) {
         const jsCode = `(function() { try { 
             const turns = []; 
             const rawHTMLString = document.body.innerHTML; 

@@ -60,7 +60,7 @@ class TabManager {
         });
 
         tabView.webContents.on('dom-ready', () => {
-            this.onInjectLocalStorage(tabView, getAllSuppliers().flatMap(s => s.getThemeBridgeKeys()));
+            this.onInjectLocalStorage(tabView, getAllSuppliers().flatMap(s => s.getLocalStorageThemeBridgeKeys()));
         });
 
         if (sendMsg) {

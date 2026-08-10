@@ -2,7 +2,7 @@ const BaseAISupplier = require('./BaseAISupplier');
 
 class KimiSupplier extends BaseAISupplier {
     constructor() {
-        super('kimi', 'Kimi', 'https://www.kimi.com/');
+        super('moonshot_ai_kimi', 'Kimi', 'https://www.kimi.com/');
     }
 
     checkRealChatURL(currentURL) {
@@ -89,11 +89,11 @@ class KimiSupplier extends BaseAISupplier {
         `;
     }
 
-    getThemeBridgeKeys() {
+    getLocalStorageThemeBridgeKeys() {
         return ['CUSTOM_THEME'];
     }
 
-    handleThemeBridge({ key, value, toggleTheme }) {
+    handleLocalStorageThemeBridge({ key, value, toggleTheme }) {
         if (key !== 'CUSTOM_THEME') return undefined;
 
         toggleTheme(value.includes('system') ? 'system' : (value.includes('dark') ? 'dark' : 'light'));
@@ -111,7 +111,7 @@ class KimiSupplier extends BaseAISupplier {
         return true;
     }
 
-    async exportChat(webContents, type) {
+    async getExportHtmlContent(webContents, type) {
         const jsCode = `(async function() { try { 
             function fetchIframeHtml(iframeSrc) {
                 return new Promise((resolve) => {

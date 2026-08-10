@@ -157,9 +157,10 @@ class QuickLauncherWindow {
 
             await pageLoadPromise;
 
-            await sleep(1000);
+            await sleep(1500);
 
             try {
+                if (webContents.getURL() !== url) return true;
                 if (await isAnySupplierReady(webContents)) {
                     this.getTrayManager().stopAnimation();
                     return true;
@@ -167,7 +168,7 @@ class QuickLauncherWindow {
             } catch (err) { }
 
             if (attempt < maxRetries) {
-                await sleep(1000);
+                await sleep(1500);
             }
         }
 
@@ -185,7 +186,7 @@ class QuickLauncherWindow {
 
                 this.currentQuickLauncherProcessingURL = detail;
                 if (this.hasGoogleSeachAIModeDomCheckURL) return;
-                this.hasGoogleSeachAIModeDomCheckURL = aiRegistry.get('google_search_ai_node').checkRealChatURL(detail);
+                this.hasGoogleSeachAIModeDomCheckURL = aiRegistry.get('google_search_ai_mode').checkRealChatURL(detail);
 
                 if (this.hasGoogleSeachAIModeDomCheckURL && !this.ignored1stGoogleSeachAIModeDomCheckURL) {
                     this.ignored1stGoogleSeachAIModeDomCheckURL = true;
@@ -221,7 +222,13 @@ class QuickLauncherWindow {
         const jsCode = supplier.getQuickLauncherJS();
         if (!jsCode) return;
 
-        const rect = await this.view.webContents.executeJavaScript(jsCode);
+        let rect = await this.view.webContents.executeJavaScript(jsCode);
+
+        if (!rect) {
+            rect = { top: 16, left: 16, width: 1200 - 32, height: 600 - 32 };
+        }
+        if (rect.top <= 0) rect.top = rect.left;
+        if (rect.width <= 0) rect.width = rect.height;
 
         this.view?.setBounds({
             x: (-rect.left + 16) * this.getZoomFactor(),

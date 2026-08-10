@@ -43,11 +43,11 @@ class DeepSeekSupplier extends BaseAISupplier {
         `;
     }
 
-    getThemeBridgeKeys() {
+    getLocalStorageThemeBridgeKeys() {
         return ['__appKit_@deepseek/chat_themePreference'];
     }
 
-    handleThemeBridge({ key, value, toggleTheme }) {
+    handleLocalStorageThemeBridge({ key, value, toggleTheme }) {
         if (key !== '__appKit_@deepseek/chat_themePreference') return undefined;
 
         toggleTheme(value.includes('system') ? 'system' : (value.includes('dark') ? 'dark' : 'light'));
@@ -93,7 +93,7 @@ class DeepSeekSupplier extends BaseAISupplier {
         return true;
     }
 
-    async exportChat(webContents, type) {
+    async getExportHtmlContent(webContents, type) {
         const executionResult = await webContents.executeJavaScript(`
             new Promise((resolve) => {
                 window.dispatchEvent(new Event('beforeprint'));

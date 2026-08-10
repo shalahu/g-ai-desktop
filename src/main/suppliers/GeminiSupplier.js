@@ -56,11 +56,11 @@ class GeminiSupplier extends BaseAISupplier {
         `;
     }
 
-    getThemeBridgeKeys() {
+    getLocalStorageThemeBridgeKeys() {
         return ['Bard-Color-Theme'];
     }
 
-    handleThemeBridge({ key, value, toggleTheme }) {
+    handleLocalStorageThemeBridge({ key, value, toggleTheme }) {
         if (key !== 'Bard-Color-Theme') return undefined;
 
         toggleTheme(value === "Bard-Dark-Theme" ? 'dark' : 'light');
@@ -94,7 +94,7 @@ class GeminiSupplier extends BaseAISupplier {
         return true;
     }
 
-    async exportChat(webContents, type) {
+    async getExportHtmlContent(webContents, type) {
         const jsCode = `
             (function() {
                 try {

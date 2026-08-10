@@ -2,15 +2,15 @@ const { ipcRenderer } = require('electron');
 
 window.addEventListener('local-storage-set-bridge', async (event) => {
     const { key, value } = event.detail;
-    const rendererAction = await ipcRenderer.invoke('local-storage-theme-bridge', { key, value });
+    const action = await ipcRenderer.invoke('local-storage-theme-bridge', { key, value });
 
-    if (rendererAction && window.__tabDriverActions && window.__tabDriverActions[rendererAction]) {
-        window.__tabDriverActions[rendererAction]();
+    if (action && window.__onHandleLocalStorageThemeBridgeActions && window.__onHandleLocalStorageThemeBridgeActions[action]) {
+        window.__onHandleLocalStorageThemeBridgeActions[action]();
     }
 });
 
 window.addEventListener('local-storage-remove-bridge', async () => {
-    await ipcRenderer.invoke('web-theme-changed', null);
+    await ipcRenderer.invoke('toggle-theme-from-ui', null);
 });
 
 window.addEventListener('export-html-content', async (event) => {
@@ -28,8 +28,8 @@ window.addEventListener('DOMContentLoaded', async () => {
         Object.defineProperty(window, 'parent', { get: () => window });
         window.open = (url) => { window.location.href = url; return window; };
 
-        for (const driver of window.__tabDrivers || []) {
-            await driver();
+        for (const action of window.__onDOMContentLoadedActions || []) {
+            await action();
         }
     } catch (e) { }
 });

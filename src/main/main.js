@@ -303,14 +303,14 @@ ipcMain.handle('close-tab', (event, { id }) => tabManager.closeTab(id));
 
 ipcMain.handle('get-current-theme', () => themeService.currentTheme);
 
-ipcMain.handle('toggle-theme-from-ui', (theme) => themeService.toggleApplicationTheme(theme));
+ipcMain.handle('toggle-theme-from-main', (event, theme) => themeService.toggleApplicationTheme(theme));
 
 ipcMain.handle('get-config', (event, key) => {
     return getConfig(key);
 });
 
 ipcMain.handle('is-google-search-ai-mode-real-chat-url', (event, url) => {
-    return aiRegistry.get('google_search_ai_node').checkRealChatURL(url, true);
+    return aiRegistry.get('google_search_ai_mode').checkRealChatURL(url, true);
 });
 
 ipcMain.handle('get-default-ai-supplier', (event, ignoreStartup) => {
@@ -319,10 +319,10 @@ ipcMain.handle('get-default-ai-supplier', (event, ignoreStartup) => {
     };
 });
 
-ipcMain.handle('web-theme-changed', (event, theme) => themeService.toggleApplicationTheme(theme ?? 'system', true));
+ipcMain.handle('toggle-theme-from-ui', (event, theme) => themeService.toggleApplicationTheme(theme ?? 'system', true));
 
 ipcMain.handle('local-storage-theme-bridge', (event, { key, value }) => {
-    return themeService.handleThemeBridge(key, value);
+    return themeService.handleLocalStorageThemeBridge(key, value);
 });
 
 ipcMain.handle('mouse-enter-menu', async () => {

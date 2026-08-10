@@ -16,7 +16,7 @@ class ExportService {
         const activeTabView = this.getActiveTabView();
         const supplier = getSupplierByUrl(activeTabView.webContents.getURL(), true);
 
-        if (!supplier) {
+        if (!supplier || !(await supplier.isRealChatReady(activeTabView.webContents))) {
             await dialog.showMessageBox(this.windowManager.mainWindow, {
                 type: 'warning',
                 title: 'Export Failed',
@@ -27,11 +27,9 @@ class ExportService {
             return;
         }
 
-        if (!(await supplier.isRealChatReady(activeTabView.webContents))) return;
-
         await this.blurActiveTabView(activeTabView);
 
-        const htmlContent = await supplier.exportChat(activeTabView.webContents, type);
+        const htmlContent = await supplier.getExportHtmlContent(activeTabView.webContents, type);
 
         if (htmlContent) {
             await this.exportHTMLContent(activeTabView.webContents, htmlContent, type);

@@ -29,11 +29,11 @@ class BaseAISupplier {
         return null;
     }
 
-    getThemeBridgeKeys() {
+    getLocalStorageThemeBridgeKeys() {
         return [];
     }
 
-    handleThemeBridge({ key, value, toggleTheme }) {
+    handleLocalStorageThemeBridge({ key, value, toggleTheme }) {
         return undefined;
     }
 
@@ -41,8 +41,8 @@ class BaseAISupplier {
         return false;
     }
 
-    async exportChat(webContents, type) {
-        throw new Error(`exportChat not implemented for ${this.id}`);
+    async getExportHtmlContent(webContents, type) {
+        throw new Error(`getExportHtmlContent not implemented for ${this.id}`);
     }
 }
 

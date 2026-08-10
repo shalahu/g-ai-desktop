@@ -12,9 +12,9 @@ class ThemeService {
         this.currentTheme = 'dark';
     }
 
-    async handleThemeBridge(key, value) {
+    async handleLocalStorageThemeBridge(key, value) {
         for (const supplier of getAllSuppliers()) {
-            const rendererAction = await supplier.handleThemeBridge({
+            const rendererAction = await supplier.handleLocalStorageThemeBridge({
                 key,
                 value,
                 toggleTheme: (theme) => this.toggleApplicationTheme(theme ?? 'system', true)
