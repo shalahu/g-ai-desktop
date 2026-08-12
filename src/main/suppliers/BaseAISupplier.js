@@ -1,8 +1,9 @@
 class BaseAISupplier {
-    constructor(id, label, landingPage) {
+    constructor(id, label, landingPage, unstable = false) {
         this.id = id;
-        this.label = label;
+        this.label = label + (unstable ? ' (Unstable due to Cloudflare)' : '');
         this.landingPage = landingPage;
+        this.limited = unstable;
     }
 
     checkRealChatURL(url) {

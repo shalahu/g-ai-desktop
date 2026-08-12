@@ -14,7 +14,11 @@ class ExportService {
 
     async triggerExport(type) {
         const activeTabView = this.getActiveTabView();
-        const supplier = getSupplierByUrl(activeTabView.webContents.getURL(), true);
+        let supplier = null;
+        
+        if (activeTabView) {
+            supplier = getSupplierByUrl(activeTabView.webContents.getURL(), true);
+        }
 
         if (!supplier || !(await supplier.isRealChatReady(activeTabView.webContents))) {
             await dialog.showMessageBox(this.windowManager.mainWindow, {

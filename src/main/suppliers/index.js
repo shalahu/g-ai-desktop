@@ -4,6 +4,8 @@ const GoogleSearchAISupplier = require('./GoogleSearchAISupplier');
 const DeepSeekSupplier = require('./DeepSeekSupplier');
 const KimiSupplier = require('./KimiSupplier');
 const CopilotSupplier = require('./CopilotSupplier');
+const ChatGPTSupplier = require('./ChatGPTSupplier');
+const ClaudeSupplier = require('./ClaudeSupplier');
 
 const aiRegistry = new Map();
 
@@ -16,14 +18,8 @@ register(new GoogleSearchAISupplier());
 register(new DeepSeekSupplier());
 register(new KimiSupplier());
 register(new CopilotSupplier());
-
-function getSupplierByLandingPage(url) {
-    if (!url) return null;
-    for (const supplier of aiRegistry.values()) {
-        if (supplier.matchesLandingPage(url)) return supplier;
-    }
-    return null;
-}
+register(new ChatGPTSupplier());
+register(new ClaudeSupplier());
 
 function getSupplierByUrl(url, checkRealChat = false) {
     if (!url) return null;
@@ -81,7 +77,6 @@ function getNextLandingPage(currentUrl) {
 
 module.exports = {
     aiRegistry,
-    getSupplierByLandingPage,
     getSupplierByUrl,
     isAnySupplierReady,
     getDefaultSupplier,

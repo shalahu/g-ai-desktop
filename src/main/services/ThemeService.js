@@ -75,65 +75,72 @@ class ThemeService {
             for (const supplier of getAllSuppliers()) {
                 if (await supplier.applyViewTheme({ tabView, ...deps })) return;
             }
-        } catch (err) {}
+        } catch (err) { }
     }
 
     removeLocalStorage(tabView, key) {
-        const jsCode = `
-        (() => {
-            try {
-                window.__APP_LOCALSTORAGE_WRITE__ = true;
-                localStorage.removeItem("${key}");
-                window.__APP_LOCALSTORAGE_WRITE__ = false;
+        key = JSON.stringify(key);
 
-                const storageEvent = new StorageEvent('storage', {
-                    key: "${key}",
-                    newValue: null,
-                    oldValue: null,
-                    url: window.location.href,
-                    storageArea: localStorage
-                });
-                window.dispatchEvent(storageEvent);
-            } catch (e) {}
-        })();
-    `;
+        const jsCode = `
+            (() => {
+                try {
+                    window.__APP_LOCALSTORAGE_WRITE__ = true;
+                    localStorage.removeItem(${key});
+                    window.__APP_LOCALSTORAGE_WRITE__ = false;
+
+                    const storageEvent = new StorageEvent('storage', {
+                        key: ${key},
+                        newValue: null,
+                        oldValue: null,
+                        url: window.location.href,
+                        storageArea: localStorage
+                    });
+                    window.dispatchEvent(storageEvent);
+                } catch (e) {}
+            })();
+        `;
 
         tabView.webContents.executeJavaScript(jsCode);
     }
 
     setLocalStorage(tabView, key, value) {
-        const jsInjectCode = `
-        (() => {
-            try {
-                window.__APP_LOCALSTORAGE_WRITE__ = true;
-                localStorage.setItem("${key}", "${value}");
-                window.__APP_LOCALSTORAGE_WRITE__ = false;
+        key = JSON.stringify(key);
+        value = JSON.stringify(value);
 
-                const storageEvent = new StorageEvent('storage', {
-                    key: "${key}",
-                    newValue: "${value}",
-                    oldValue: null,
-                    url: window.location.href,
-                    storageArea: localStorage
-                });
-                window.dispatchEvent(storageEvent);
-            } catch (e) {}
-        })();
-    `;
+        const jsInjectCode = `
+            (() => {
+                try {
+                    window.__APP_LOCALSTORAGE_WRITE__ = true;
+                    localStorage.setItem(${key}, ${value});
+                    window.__APP_LOCALSTORAGE_WRITE__ = false;
+
+                    const storageEvent = new StorageEvent('storage', {
+                        key: ${key},
+                        newValue: ${value},
+                        oldValue: null,
+                        url: window.location.href,
+                        storageArea: localStorage
+                    });
+                    window.dispatchEvent(storageEvent);
+                } catch (e) {}
+            })();
+        `;
 
         tabView.webContents.executeJavaScript(jsInjectCode);
     }
 
     async getLocalStorage(tabView, key) {
+        key = JSON.stringify(key);
+
         const jsInjectCode = `
-        (() => {
-            try {
-                return localStorage.getItem("${key}");
-            } catch (e) {
-                return null;
-            }
-        })();
-    `;
+            (() => {
+                try {
+                    return localStorage.getItem(${key});
+                } catch (e) {
+                    return null;
+                }
+            })();
+        `;
 
         try {
             const savedValue = await tabView.webContents.executeJavaScript(jsInjectCode);
@@ -145,35 +152,35 @@ class ThemeService {
 
     injectLocalStorage(tabView, keys) {
         const injectLocalStorageSpyJS = `
-        (() => {
-            if (window.__LOCALSTORAGE_SPY_ACTIVE__) return;
-            window.__LOCALSTORAGE_SPY_ACTIVE__ = true;
+            (() => {
+                if (window.__LOCALSTORAGE_SPY_ACTIVE__) return;
+                window.__LOCALSTORAGE_SPY_ACTIVE__ = true;
 
-            const originalSet = Storage.prototype.setItem;
-            const originalRemove = Storage.prototype.removeItem;
-            const keys = ${JSON.stringify(keys)};
+                const originalSet = Storage.prototype.setItem;
+                const originalRemove = Storage.prototype.removeItem;
+                const keys = ${JSON.stringify(keys)};
 
-            Storage.prototype.setItem = function (key, value) {
-                originalSet.apply(this, arguments);
+                Storage.prototype.setItem = function (key, value) {
+                    originalSet.apply(this, arguments);
 
-                if (!window.__APP_LOCALSTORAGE_WRITE__ && keys.includes(key)) {
-                    try {
-                         window.dispatchEvent(new CustomEvent('local-storage-set-bridge', { detail: {key, value} }));
-                    } catch(e) {}
-                }
-            };
+                    if (!window.__APP_LOCALSTORAGE_WRITE__ && keys.includes(key)) {
+                        try {
+                            window.dispatchEvent(new CustomEvent('local-storage-set-bridge', { detail: {key, value} }));
+                        } catch(e) {}
+                    }
+                };
 
-            Storage.prototype.removeItem = function (key) {
-                originalRemove.apply(this, arguments);
+                Storage.prototype.removeItem = function (key) {
+                    originalRemove.apply(this, arguments);
 
-                if (!window.__APP_LOCALSTORAGE_WRITE__ && keys.includes(key)) {
-                    try {
-                        window.dispatchEvent(new CustomEvent('local-storage-remove-bridge'));
-                    } catch(e) {}
-                }
-            };
-        })();
-    `;
+                    if (!window.__APP_LOCALSTORAGE_WRITE__ && keys.includes(key)) {
+                        try {
+                            window.dispatchEvent(new CustomEvent('local-storage-remove-bridge'));
+                        } catch(e) {}
+                    }
+                };
+            })();
+        `;
 
         tabView.webContents.executeJavaScript(injectLocalStorageSpyJS).catch((e) => { });
     }

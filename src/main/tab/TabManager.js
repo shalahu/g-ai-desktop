@@ -140,7 +140,10 @@ class TabManager {
         const tabView = this.tabsMap.get(id);
         if (tabView) {
             this.windowManager.mainWindow.contentView.removeChildView(tabView);
-            tabView.webContents.destroy();
+            const webContents = tabView.webContents;
+            if (webContents && !webContents.isDestroyed()) {
+                webContents.destroy();
+            }
             this.tabsMap.delete(id);
         }
     }

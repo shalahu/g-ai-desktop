@@ -101,13 +101,17 @@ class KimiSupplier extends BaseAISupplier {
     }
 
     async applyViewTheme({ tabView, theme, currentTheme, setLocalStorage, removeLocalStorage }) {
+        if (!(this.matchesUrl(tabView.webContents.getURL()))) {
+            return false;
+        }
+        
         const htmlClassList = await tabView.webContents.executeJavaScript("Array.from(document.documentElement.classList);");
 
         if (!(htmlClassList.includes('system') || htmlClassList.includes('dark') || htmlClassList.includes('light'))) {
             return false;
         }
 
-        setLocalStorage(tabView, 'CUSTOM_THEME', `\\\"${theme}\\\"`);
+        setLocalStorage(tabView, 'CUSTOM_THEME', `"${theme}"`);
         return true;
     }
 

@@ -87,7 +87,7 @@ class DeepSeekSupplier extends BaseAISupplier {
                 tabView.webContents.executeJavaScript(`document.documentElement.setAttribute('data-immersive-translate-page-theme', 'light');`);
             }
 
-            setLocalStorage(tabView, '__appKit_@deepseek/chat_themePreference', `{\\\"value\\\":\\\"${theme}\\\",\\\"__version\\\":\\\"0\\\"}`);
+            setLocalStorage(tabView, '__appKit_@deepseek/chat_themePreference', `{"value":"${theme}","__version":"0"}`);
         }
 
         return true;

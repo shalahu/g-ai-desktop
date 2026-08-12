@@ -2,7 +2,7 @@ const BaseAISupplier = require('./BaseAISupplier');
 
 const COPILOT_URL = 'https://copilot.microsoft.com/';
 const COLOR_THEME_COOKIE_NAME = 'colorTheme';
-const COPILOT_NAME = 'Microsoft Copilot';
+const COPILOT_NAME = 'Copilot';
 
 class CopilotSupplier extends BaseAISupplier {
     constructor() {
@@ -58,6 +58,10 @@ class CopilotSupplier extends BaseAISupplier {
                 };
             })();
         `;
+    }
+
+    getLocalStorageThemeBridgeKeys() {
+        return ['colorTheme'];
     }
 
     async applyViewTheme({ tabView, theme, currentTheme, setLocalStorage, removeLocalStorage }) {
@@ -129,6 +133,9 @@ class CopilotSupplier extends BaseAISupplier {
 
             this._cookiesThemeListener = async (event, cookie, cause, removed) => {
                 if (cookie.name === COLOR_THEME_COOKIE_NAME) {
+                    if (cause === 'expired-overwrite' && removed) {
+                        cookie.value = '';
+                    }
                     await tabView.webContents.executeJavaScript(`window.dispatchEvent(new CustomEvent('cookie-color-theme-changed', { detail: { theme: '${cookie.value}' } }));`);
                 }
             };
@@ -173,7 +180,6 @@ class CopilotSupplier extends BaseAISupplier {
 
             const getTitle = () => {
                 const titleButton = document.getElementById('conversation-options-' + chatId);
-                console.log(chatId, titleButton)
                 if (titleButton) {
                     return titleButton.parentElement.parentElement.innerText;
                 }

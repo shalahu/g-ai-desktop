@@ -1,5 +1,5 @@
 const { BrowserWindow, WebContentsView, screen } = require('electron');
-const { aiRegistry, getSupplierByLandingPage, isAnySupplierReady } = require('../suppliers');
+const { aiRegistry, getSupplierByUrl, isAnySupplierReady } = require('../suppliers');
 
 class QuickLauncherWindow {
     constructor({ getPreloadPath, getTrayManager, onOpenNewTab, onShowApp, getZoomFactor, onApplyTheme }) {
@@ -216,7 +216,7 @@ class QuickLauncherWindow {
         }
 
         const currentURL = this.view.webContents.getURL();
-        const supplier = getSupplierByLandingPage(currentURL);
+        const supplier = getSupplierByUrl(currentURL);
         if (!supplier) return;
 
         const jsCode = supplier.getQuickLauncherJS();
