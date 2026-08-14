@@ -21,7 +21,7 @@ const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif', 'heic', 
 const CONVERTIBLE_TO_PDF_EXTS = [...WORD_DOC_EXTS, ...EXCEL_DATA_SHEET_EXTS, ...PLAIN_TEXT_EXTS, ...IMAGE_EXTS];
 const APP_ID = 'com.g-ai.desktop';
 const APP_WEBSITE = 'https://github.com/shalahu/g-ai-desktop/';
-const ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icon.png');
+const ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icons', 'icon.png');
 
 module.exports = {
     APP_NAME,

@@ -23,24 +23,32 @@ class CopilotSupplier extends BaseAISupplier {
     getQuickLauncherJS() {
         return `
             (function() {
-                const inputEl = document.querySelector('div[data-testid="composer"]');
+                const inputEl = document.querySelector('div[data-testid="composer-background"]')?.querySelector('div');
                 if (!inputEl) return null;
 
                 document.documentElement.style['-webkit-app-region'] = 'drag';
                 inputEl.style['-webkit-app-region'] = 'no-drag';
                 const inputDomRect = inputEl.getBoundingClientRect();
-                const overlayEl = document.getElementById('popoverPortal').querySelector('div');
+                let overlayEl = document.getElementById('popoverPortal')?.querySelector('div');
+                if (!overlayEl) {
+                    overlayEl = document.querySelector('.w-expanded-composer:not(:has(textarea))')?.querySelector('div');
+                    if (overlayEl) {
+                        document.documentElement.style['-webkit-app-region'] = 'drag';
+                        inputEl.style['-webkit-app-region'] = 'no-drag';
+                        overlayEl.style['-webkit-app-region'] = 'no-drag';
+                    }
+                } else {
+                    document.documentElement.style['-webkit-app-region'] = 'no-drag';
+                }
 
                 let overlayHeight = 0; 
                 let top = inputDomRect.top;
                 
                 if (overlayEl) {
-                    document.documentElement.style['-webkit-app-region'] = 'no-drag';
                     const overlayDomRect = overlayEl.getBoundingClientRect();
                     if (overlayDomRect.y + overlayDomRect.height > inputDomRect.y + inputDomRect.height) {
                         overlayHeight = overlayDomRect.height - (inputDomRect.y + inputDomRect.height - overlayDomRect.y);
                     }
-
                     if (overlayDomRect.y < inputDomRect.y) {
                         top = overlayDomRect.top;
                         overlayHeight = inputDomRect.y - overlayDomRect.y;
@@ -151,10 +159,7 @@ class CopilotSupplier extends BaseAISupplier {
     async getExportHtmlContent(webContents, type) {
         const jsCode = `(async function() { try { 
             const turns = []; 
-            const rawHTMLString = document.body.innerHTML; 
-            const parser = new DOMParser(); 
-            const tempDoc = parser.parseFromString(rawHTMLString, 'text/html'); 
-            const conversation = tempDoc.querySelector('div[data-content="conversation"]');
+            const conversation = document.querySelector('div[data-content="conversation"]');
             const turnItems = conversation.querySelectorAll('div[id*="-user-message"], div[data-content="ai-message"]'); 
 
             let promptText = '';
@@ -209,7 +214,7 @@ class CopilotSupplier extends BaseAISupplier {
         const chatData = await webContents.executeJavaScript(jsCode);
 
         let dialoguesHtml = "";
-        chatData.dialogues.forEach((round, index) => {
+        (chatData?.dialogues ?? []).forEach((round, index) => {
             dialoguesHtml += '<div class="chat-section prompt-section">' +
                 '<div class="section-label">User Prompt #' + (index + 1) + '</div>' +
                 '<div class="content">' + round.promptText + '</div>' +

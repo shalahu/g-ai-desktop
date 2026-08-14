@@ -1,7 +1,7 @@
 const { WebContentsView } = require('electron');
 const { getConfig } = require('../config');
 const { SIDE_PADDING, APP_USER_AGENT } = require('../constants');
-const { getAllSuppliers } = require('../suppliers');
+const { getSupplierByUrl } = require('../suppliers');
 const { buildTabPreload } = require('../preloadBuilder');
 
 class TabManager {
@@ -60,7 +60,7 @@ class TabManager {
         });
 
         tabView.webContents.on('dom-ready', () => {
-            this.onInjectLocalStorage(tabView, getAllSuppliers().flatMap(s => s.getLocalStorageThemeBridgeKeys()));
+            this.onInjectLocalStorage(tabView, getSupplierByUrl(tabView.webContents.getURL())?.getLocalStorageThemeBridgeKeys());
         });
 
         if (sendMsg) {

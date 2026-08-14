@@ -1,9 +1,9 @@
 {
   "name": "g-ai-desktop",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "productName": "G-AI Desktop",
   "author": "g-ai <shalahu@163.com>",
-  "icon": "assets/icon.png",
+  "icon": "assets/icons/icon.png",
   "copyright": "Copyright © 2026 g-ai",
   "main": "src/main/index.js",
   "scripts": {
@@ -33,14 +33,14 @@
       "package.json"
     ],
     "win": {
-      "icon": "assets/icon.ico",
+      "icon": "assets/icons/icon.ico",
       "target": [
         "nsis",
         "portable"
       ]
     },
     "mac": {
-      "icon": "assets/icon.icns",
+      "icon": "assets/icons/icon.icns",
       "category": "public.app-category.utilities",
       "target": [
         {
@@ -53,7 +53,7 @@
       ]
     },
     "linux": {
-      "icon": "assets/icon.png",
+      "icon": "assets/icons/icon.png",
       "maintainer": "g-ai <shalahu@163.com>",
       "target": [
         "AppImage",

@@ -151,6 +151,7 @@ class ThemeService {
     }
 
     injectLocalStorage(tabView, keys) {
+        if (!keys) return;
         const injectLocalStorageSpyJS = `
             (() => {
                 if (window.__LOCALSTORAGE_SPY_ACTIVE__) return;

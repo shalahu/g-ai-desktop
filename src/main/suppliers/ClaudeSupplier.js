@@ -9,8 +9,8 @@ class ClaudeSupplier extends BaseAISupplier {
     }
 
     checkRealChatURL(currentURL) {
-        const dsChatRegex = /claude\.ai\/chat\/([0-9a-fA-F]{8}|[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/;
-        return dsChatRegex.test(currentURL);
+        const claudeChatRegex = /claude\.ai\/chat\/([0-9a-fA-F]{8}|[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/;
+        return claudeChatRegex.test(currentURL);
     }
 
     async isRealChatReady(webContents) {
@@ -36,18 +36,34 @@ class ClaudeSupplier extends BaseAISupplier {
                 const modeDomRect = modeEl?.getBoundingClientRect();
                 const inputDomRect = inputEl.getBoundingClientRect();
                 const inputDomRectHeight = inputDomRect.height + (modeDomRect ? modeDomRect.height : 0); 
+                const inputDomRectWidth = inputDomRect.width; 
 
-                const overlayEl = document.querySelector('div[data-open]');
+                const overlayEls = document.querySelectorAll('div[data-open][role="menu"]');
 
                 let overlayHeight = inputDomRectHeight; 
+                let overlayWidth = inputDomRectWidth;
+                let overlayLeft = inputDomRect.left;
                 let top = inputDomRect.top;
 
-                if (overlayEl) {
+                if (overlayEls.length > 0) {
                     document.documentElement.style['-webkit-app-region'] = 'no-drag';
-                    const overlayDomRect = overlayEl.getBoundingClientRect();
+                    const overlayDomRect = (() => {
+                        const rects = Array.from(overlayEls).map(el => el.getBoundingClientRect());
+                        if (!rects.length) return { x: 0, y: 0, left: 0, width: 0, height: 0 };
+                        const x1 = Math.min(...rects.map(r => r.left)), y1 = Math.min(...rects.map(r => r.top));
+                        return { x: x1, y: y1, left: x1, width: Math.max(...rects.map(r => r.right)) - x1, height: Math.max(...rects.map(r => r.bottom)) - y1 };
+                    })();
                     if (overlayDomRect.y + overlayDomRect.height > inputDomRect.y + inputDomRectHeight) {
                         overlayHeight = inputDomRect.height + overlayDomRect.height - (inputDomRect.y + inputDomRect.height - overlayDomRect.y);
                     }
+                    if (overlayDomRect.x + overlayDomRect.width > inputDomRect.x + inputDomRectWidth) {
+                        overlayWidth = inputDomRect.width + overlayDomRect.width - (inputDomRect.x + inputDomRect.width - overlayDomRect.x);
+                    }
+                    if (overlayDomRect.left < overlayLeft) {
+                        const move = overlayLeft - overlayDomRect.left;
+                        overlayLeft = overlayDomRect.left;
+                        overlayWidth += move ;
+                    }   
                 } else {
                     document.documentElement.style['-webkit-app-region'] = 'drag';
                     inputEl.style['-webkit-app-region'] = 'no-drag';
@@ -57,10 +73,10 @@ class ClaudeSupplier extends BaseAISupplier {
                 }
 
                 return {
-                    width: inputDomRect.width,
+                    width: overlayWidth,
                     height: overlayHeight,
                     top: top,
-                    left: inputDomRect.left
+                    left: overlayLeft
                 };
             })();
         `;

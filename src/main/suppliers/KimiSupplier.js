@@ -37,6 +37,7 @@ class KimiSupplier extends BaseAISupplier {
 
                 let inputDomRectHeight = inputDomRect.height + optionsDomRect.height + publisherDomRect.height;
                 let inputDomRectTop = inputDomRect.top;
+                let inputDomRectWidth = inputDomRect.width;
 
                 function onPrimaryMenuHover() {
                     setTimeout(() => {
@@ -76,11 +77,14 @@ class KimiSupplier extends BaseAISupplier {
                             inputDomRectHeight = (inputDomRect.y + inputDomRectHeight) - popoverDomRect.y;
                             inputDomRectTop = popoverDomRect.top;
                         }
+                        if (popoverDomRect.x + popoverDomRect.width > inputDomRect.x + inputDomRectWidth) {
+                            inputDomRectWidth = (popoverDomRect.x + popoverDomRect.width) - inputDomRect.x;
+                        }
                     }
                 });
 
                 return {
-                    width: inputDomRect.width,
+                    width: inputDomRectWidth,
                     height: inputDomRectHeight,
                     top: inputDomRectTop,
                     left: inputDomRect.left
@@ -193,7 +197,7 @@ class KimiSupplier extends BaseAISupplier {
         const chatData = await webContents.executeJavaScript(jsCode);
 
         let dialoguesHtml = "";
-        chatData.dialogues.forEach((round, index) => {
+        (chatData?.dialogues ?? []).forEach((round, index) => {
             dialoguesHtml += '<div class="chat-section prompt-section">' +
                 '<div class="section-label">User Prompt #' + (index + 1) + '</div>' +
                 '<div class="content">' + round.promptText + '</div>' +

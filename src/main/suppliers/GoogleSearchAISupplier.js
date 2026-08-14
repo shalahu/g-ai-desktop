@@ -325,7 +325,7 @@ class GoogleSearchAISupplier extends BaseAISupplier {
         const chatData = await webContents.executeJavaScript(jsCode);
 
         let dialoguesHtml = "";
-        chatData.dialogues.forEach((round, index) => {
+        (chatData?.dialogues ?? []).forEach((round, index) => {
             dialoguesHtml += '<div class="chat-section prompt-section">' +
                 '<div class="section-label">User Prompt #' + (index + 1) + '</div>' +
                 '<div class="content">' + round.promptText + '</div>' +

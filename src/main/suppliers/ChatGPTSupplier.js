@@ -9,8 +9,8 @@ class ChatGPTSupplier extends BaseAISupplier {
     }
 
     checkRealChatURL(currentURL) {
-        const dsChatRegex = /chatgpt\.com\/c\/([0-9a-fA-F]{8}|[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/;
-        return dsChatRegex.test(currentURL);
+        const chatgptChatRegex = /chatgpt\.com\/c\/([0-9a-fA-F]{8}|[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/;
+        return chatgptChatRegex.test(currentURL);
     }
 
     async isRealChatReady(webContents) {
@@ -22,18 +22,19 @@ class ChatGPTSupplier extends BaseAISupplier {
     getQuickLauncherJS() {
         return `
             (function() {
-                const inputEl = document.getElementById('thread-bottom');
+                const inputEl = document.querySelector('form');
                 if (!inputEl) return null;
-                const modeEl = inputEl.nextElementSibling;
-                if (!modeEl) return null;
+                const modeEl = document.getElementById('thread-bottom')?.nextElementSibling?.querySelector('div[data-testid="use-case-prompt-chips"]');
 
                 document.documentElement.style['-webkit-app-region'] = 'drag';
                 inputEl.style['-webkit-app-region'] = 'no-drag';
-                modeEl.style['-webkit-app-region'] = 'no-drag';
+                if (modeEl) {
+                    modeEl.style['-webkit-app-region'] = 'no-drag';
+                }
 
-                const modeDomRect = modeEl.getBoundingClientRect();
+                const modeDomRect = modeEl?.getBoundingClientRect();
                 const inputDomRect = inputEl.getBoundingClientRect();
-                const inputDomRectHeight = inputDomRect.height + modeDomRect.height; 
+                const inputDomRectHeight = inputDomRect.height + (modeDomRect ? modeDomRect.height : 0); 
 
                 const overlayEl = document.querySelector('.popover');
 
@@ -49,7 +50,9 @@ class ChatGPTSupplier extends BaseAISupplier {
                 } else {
                     document.documentElement.style['-webkit-app-region'] = 'drag';
                     inputEl.style['-webkit-app-region'] = 'no-drag';
-                    modeEl.style['-webkit-app-region'] = 'no-drag';
+                    if (modeEl) {
+                        modeEl.style['-webkit-app-region'] = 'no-drag';
+                    }
                 }
 
                 return {
