@@ -116,7 +116,8 @@ class QwenSupplier extends BaseAISupplier {
         if (currentURL === 'https://chat.qwen.ai/settings/general') {
             await tabView.webContents.executeJavaScript(`
                 (function() {
-                    const elements = document.querySelectorAll('input[class="ant-segmented-item-input"]');
+                    const elements = document.querySelector('.ant-tabs-nav-list')?.querySelectorAll('div[data-node-key]');
+                    if (!elements) return;
                     const themes = ['system', 'light', 'dark'];
                     for (let i = 0; i < themes.length; i++) {
                         if (themes[i] === '${theme}') {

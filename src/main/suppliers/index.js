@@ -7,6 +7,7 @@ const CopilotSupplier = require('./CopilotSupplier');
 const ChatGPTSupplier = require('./ChatGPTSupplier');
 const ClaudeSupplier = require('./ClaudeSupplier');
 const QwenSupplier = require('./QwenSupplier');
+const GLMSupplier = require('./GLMSupplier');
 
 const aiRegistry = new Map();
 
@@ -22,6 +23,7 @@ register(new CopilotSupplier());
 register(new ChatGPTSupplier());
 register(new ClaudeSupplier());
 register(new QwenSupplier());
+register(new GLMSupplier());
 
 function getSupplierByUrl(url, checkRealChat = false) {
     if (!url) return null;
