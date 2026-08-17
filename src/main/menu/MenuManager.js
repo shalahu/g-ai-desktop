@@ -409,8 +409,8 @@ class MenuManager {
                 label: 'Help',
                 submenu: [
                     {
-                        id: "m-help-report-issue",
-                        label: "Report Issue",
+                        id: "m-help-send-feedback",
+                        label: "Send Feedback",
                         click: (menuItem) => {
                             this.onCreateNewTabBackend(this.onGetAppWebsiteFullURL('issues'));
                         }
