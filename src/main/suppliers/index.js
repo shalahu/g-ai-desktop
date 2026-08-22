@@ -8,6 +8,7 @@ const ChatGPTSupplier = require('./ChatGPTSupplier');
 const ClaudeSupplier = require('./ClaudeSupplier');
 const QwenSupplier = require('./QwenSupplier');
 const GLMSupplier = require('./GLMSupplier');
+const DeepSeekHarnessSupplier = require('./DeepSeekHarnessSupplier');
 
 const aiRegistry = new Map();
 
@@ -24,6 +25,7 @@ register(new ChatGPTSupplier());
 register(new ClaudeSupplier());
 register(new QwenSupplier());
 register(new GLMSupplier());
+register(new DeepSeekHarnessSupplier());
 
 function getSupplierByUrl(url, checkRealChat = false) {
     if (!url) return null;

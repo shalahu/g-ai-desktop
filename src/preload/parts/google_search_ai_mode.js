@@ -82,7 +82,5 @@ function initUploadFileInput() {
 
 window.__onDOMContentLoadedActions = window.__onDOMContentLoadedActions || [];
 window.__onDOMContentLoadedActions.push(async () => {
-    if (await ipcRenderer.invoke('is-google-search-ai-mode-real-chat-url', window.location.href)) {
-        setTimeout(() => { initUploadFileInput(); }, 1500);
-    }
+    setTimeout(() => { initUploadFileInput(); }, 1500);
 });

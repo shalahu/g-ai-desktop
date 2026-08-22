@@ -178,7 +178,7 @@ class DeepSeekSupplier extends BaseAISupplier {
                 ${remoteCssText}
                 ${extractedPrintStyles}
             </style>
-            <h1 class="export-title">${title}</h1>
+            <h1 class="export-title">${String(title ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))}</h1>
             `;
 
         return htmlContent + forcedPrintStyles;

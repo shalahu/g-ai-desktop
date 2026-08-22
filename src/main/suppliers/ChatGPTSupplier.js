@@ -174,7 +174,7 @@ class ChatGPTSupplier extends BaseAISupplier {
                 }
                 ${extractedPrintStyles}
             </style>
-            <h1 class="export-title">${title} - ${CHAT_GPT_NAME}</h1>
+            <h1 class="export-title">${String(title ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))} - ${CHAT_GPT_NAME}</h1>
             `;
 
         return htmlContent + forcedPrintStyles;

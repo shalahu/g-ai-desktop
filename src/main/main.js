@@ -1,8 +1,10 @@
+const { getConfig, saveConfig } = require('./config');
+saveConfig('dshWebURL', getValueFromArgv('dshWeb'));
 const { app, ipcMain, globalShortcut, dialog, net } = require('electron');
 const path = require('path');
 const semver = require('semver');
 
-const { aiRegistry, getDefaultSupplier } = require('./suppliers');
+const { getDefaultSupplier } = require('./suppliers');
 const { buildTabPreload } = require('./preloadBuilder');
 const TrayManager = require('./window/TrayManager');
 const WindowManager = require('./window/WindowManager');
@@ -14,7 +16,6 @@ const ThemeService = require('./services/ThemeService');
 const QuickLauncherWindow = require('./window/QuickLauncherWindow');
 const SearchWindow = require('./window/SearchWindow');
 
-const { getConfig, saveConfig } = require('./config');
 const {
     APP_NAME,
     IS_MAC,
@@ -93,6 +94,7 @@ const menuManager = new MenuManager({
     onGetAppWebsiteFullURL: (subPath) => getAppWebsiteFullURL(subPath),
     onIsMainWindowVisible: () => isMainWidowVisible(),
 });
+
 const themeService = new ThemeService({
     windowManager,
     searchWindow,
@@ -101,9 +103,7 @@ const themeService = new ThemeService({
     menuManager,
 });
 
-
-
-const proxyServer = getProxyFromArgv();
+const proxyServer = getValueFromArgv('proxy');
 
 function getCallerName() {
     const obj = {};
@@ -251,18 +251,18 @@ function exit() {
     app.quit();
 }
 
-function getProxyFromArgv() {
+function getValueFromArgv(key) {
     const args = process.argv;
 
-    const proxyArg = args.find(arg => arg.startsWith('--proxy='));
-    if (proxyArg) {
-        return proxyArg.split('=')[1];
+    const keyArg = args.find(arg => arg.startsWith(`--${key}=`));
+    if (keyArg) {
+        return keyArg.split('=')[1];
     }
 
-    const proxyIndex = args.indexOf('--proxy');
-    if (proxyIndex !== -1 && proxyIndex + 1 < args.length) {
-        if (!args[proxyIndex + 1].startsWith('-')) {
-            return args[proxyIndex + 1];
+    const keyIndex = args.indexOf(`--${key}`);
+    if (keyIndex !== -1 && keyIndex + 1 < args.length) {
+        if (!args[keyIndex + 1].startsWith('-')) {
+            return args[keyIndex + 1];
         }
     }
 
@@ -307,10 +307,6 @@ ipcMain.handle('toggle-theme-from-main', (event, theme) => themeService.toggleAp
 
 ipcMain.handle('get-config', (event, key) => {
     return getConfig(key);
-});
-
-ipcMain.handle('is-google-search-ai-mode-real-chat-url', (event, url) => {
-    return aiRegistry.get('google_search_ai_mode').checkRealChatURL(url, true);
 });
 
 ipcMain.handle('get-default-ai-supplier', (event, ignoreStartup) => {
